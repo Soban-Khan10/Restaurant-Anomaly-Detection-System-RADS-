@@ -1,0 +1,1227 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}body{margin:0}</style></head><body>
+<title>RADS Annotator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: editing-suite grid — clips/frames rail | stage | classes & metadata rail, timeline dock across the bottom */
+:root{
+  --bg:#EEF0F3; --panel:#FFFFFF; --panel2:#F3F5F7; --line:#D4D9E0; --fg:#15191E; --muted:#5D6672;
+  --accent:#0C8A80; --accent-ink:#FFFFFF; --warn:#B4541A; --ok:#2F7D3A; --stage:#DADFE5; --track:#E4E8ED;
+  --font-ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111418; --panel:#181C21; --panel2:#1F242A; --line:#2C323A; --fg:#E5E8EC; --muted:#8B94A0;
+  --accent:#4FD1C5; --accent-ink:#06211F; --warn:#F0A060; --ok:#7BD08A; --stage:#0B0D10; --track:#15191E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111418; --panel:#181C21; --panel2:#1F242A; --line:#2C323A; --fg:#E5E8EC; --muted:#8B94A0;
+  --accent:#4FD1C5; --accent-ink:#06211F; --warn:#F0A060; --ok:#7BD08A; --stage:#0B0D10; --track:#15191E; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:13px;overflow:hidden}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+/* top bar */
+.topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px max(16px,env(safe-area-inset-left,0px)) 8px max(16px,env(safe-area-inset-right,0px));
+  background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:auto}
+.brand b{font-weight:700;font-size:15px;letter-spacing:.01em}
+.brand span{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:var(--r);border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.btn.sm{height:24px;padding:0 8px;font-size:12px}
+.btn.icon{width:30px;padding:0;justify-content:center}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.on{border-color:var(--accent);color:var(--accent)}
+.field{display:flex;align-items:center;gap:6px}
+.field label,.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+select,input[type=text],input[type=number],input[type=date],textarea{background:var(--panel2);border:1px solid var(--line);border-radius:5px;height:28px;padding:0 7px;min-width:0}
+textarea{height:auto;padding:6px 7px;resize:vertical;width:100%}
+input[type=checkbox]{accent-color:var(--accent)}
+/* workspace */
+.work{min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr) 300px}
+.rail{min-height:0;overflow:auto;background:var(--panel);display:flex;flex-direction:column}
+.rail.left{border-right:1px solid var(--line)}
+.rail.right{border-left:1px solid var(--line)}
+.sec{border-bottom:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.sec h3{margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sec h3 .count{font-family:var(--font-mono);color:var(--fg);font-weight:500}
+.sec h3 .sp{margin-left:auto}
+.empty{color:var(--muted);font-size:12px;line-height:1.45}
+/* clips */
+.clip{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:5px;border:1px solid transparent;cursor:pointer;background:var(--panel2)}
+.clip.active{border-color:var(--accent)}
+.clip .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip .sub{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.clip .miss{color:var(--warn)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid2 .f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.grid2 .f.full{grid-column:1/-1}
+.grid2 select,.grid2 input{width:100%}
+details.box{border:1px solid var(--line);border-radius:5px;background:var(--panel2)}
+details.box>summary{cursor:pointer;padding:6px 8px;font-size:12px;font-weight:600;list-style:none;display:flex;gap:6px;align-items:center}
+details.box>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details.box[open]>summary::before{transform:rotate(90deg)}
+details.box>.in{padding:4px 8px 8px}
+/* events */
+.ev{display:grid;grid-template-columns:auto 1fr auto;gap:4px 6px;align-items:center;padding:6px;border-radius:5px;background:var(--panel2);border:1px solid transparent}
+.ev.sel{border-color:var(--accent)}
+.ev .t{font-family:var(--font-mono);font-size:11px;cursor:pointer;color:var(--muted)}
+.ev select,.ev input{height:24px;font-size:12px;width:100%}
+.ev .row{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+/* frames list */
+.frames{display:flex;flex-direction:column;gap:4px}
+.fr{display:grid;grid-template-columns:72px 1fr;gap:8px;padding:5px;border-radius:5px;cursor:pointer;border:1px solid transparent;align-items:center}
+.fr:hover{background:var(--panel2)}
+.fr.active{border-color:var(--accent);background:var(--panel2)}
+.fr img{width:72px;height:41px;object-fit:cover;border-radius:3px;background:var(--stage);display:block}
+.fr .meta{min-width:0;display:flex;flex-direction:column;gap:2px}
+.fr .id{font-family:var(--font-mono);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr .st{display:flex;gap:4px;flex-wrap:wrap}
+.pill{font-size:10px;font-family:var(--font-mono);padding:1px 5px;border-radius:9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:currentColor}
+.pill.warn{color:var(--warn);border-color:currentColor}
+.pill.acc{color:var(--accent);border-color:currentColor}
+/* stage */
+.center{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.stagebar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{border:0;background:var(--panel2);height:28px;padding:0 12px}
+.seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.stagebar .info{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stage{position:relative;min-height:0;background:var(--stage);overflow:hidden}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.stage canvas#ed{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.drop{position:absolute;inset:16px;border:1.5px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+.drop.hot{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.drop .card{max-width:440px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.drop h2{margin:0;font-size:20px;font-weight:700;text-wrap:balance}
+.drop ol{margin:0;padding-left:20px;text-align:left;color:var(--muted);line-height:1.6}
+.drop ol b{color:var(--fg);font-weight:600}
+.novideo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:20px}
+/* timeline dock */
+.dock{background:var(--panel);border-top:1px solid var(--line);padding:6px max(16px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:6px}
+.transport{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tc{font-family:var(--font-mono);font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;padding:0 8px;min-width:118px}
+.tc small{display:block;font-size:10px;color:var(--muted);font-weight:400}
+.capture{height:34px;padding:0 16px;border-radius:17px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;display:inline-flex;align-items:center;gap:8px;letter-spacing:.02em}
+.capture[disabled]{opacity:.4;cursor:not-allowed}
+.capture .dot{width:10px;height:10px;border-radius:50%;border:2px solid currentColor}
+.transport .grow{flex:1}
+.zoom{width:110px;accent-color:var(--accent)}
+.fps{width:58px}
+#tl{display:block;width:100%;height:118px;border-radius:5px;background:var(--track);cursor:ew-resize;touch-action:none}
+/* classes */
+.classes{display:flex;flex-direction:column;gap:2px}
+.cgroup{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:6px 0 2px}
+.cls{display:grid;grid-template-columns:14px 1fr auto;gap:7px;align-items:center;padding:4px 6px;border-radius:5px;border:1px solid transparent;background:none;text-align:left;width:100%}
+.cls:hover{background:var(--panel2)}
+.cls.on{border-color:var(--accent);background:var(--panel2)}
+.cls .sw{width:12px;height:12px;border-radius:3px}
+.cls .n{font-family:var(--font-mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cls .k{font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-family:var(--font-mono);font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.chip.auto{outline:1.5px solid var(--accent);outline-offset:1px;cursor:default}
+.autoval{font-family:var(--font-mono);font-size:12px;padding:5px 8px;border-radius:5px;background:var(--panel2);border:1px solid var(--line)}
+.autoval.warn{color:var(--warn);border-color:currentColor}
+.cliprow{display:flex;align-items:center;gap:6px;min-width:0}
+.cliprow .nm{flex:1;min-width:0}
+.cliprow .btn{width:22px;height:22px;flex:none;opacity:.7}
+.kbd{font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.7;columns:2;column-gap:12px}
+.kbd b{color:var(--fg);font-weight:500}
+.boxlist{display:flex;flex-direction:column;gap:2px;max-height:150px;overflow:auto}
+.bl{display:grid;grid-template-columns:10px 1fr auto;gap:6px;align-items:center;padding:3px 5px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px}
+.bl.on{background:var(--panel2);outline:1px solid var(--accent)}
+.bl i{width:10px;height:10px;border-radius:2px}
+/* toast + modal */
+.toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:12.5px;z-index:50;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:40;padding:16px}
+.modal .m{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:min(560px,100%);max-height:calc(100% - 32px);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.modal h2{margin:0;font-size:16px}
+.modal p{margin:0;color:var(--muted);line-height:1.5}
+.modal .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.ctable{display:flex;flex-direction:column;gap:4px}
+.crow{display:grid;grid-template-columns:28px 20px 1fr 1fr;gap:6px;align-items:center}
+.crow .id{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.crow input[type=color]{width:20px;height:20px;padding:0;border:0;background:none}
+.prog{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent);width:0}
+@media (max-width: 1100px){ .work{grid-template-columns:230px minmax(0,1fr) 260px} }
+@media (max-width: 860px){
+  body{overflow:auto}
+  .app{height:auto;display:block}
+  .work{display:flex;flex-direction:column}
+  .center{order:-1}
+  .stage{height:56vh}
+  .rail{overflow:visible;border:0!important}
+  .sec{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand"><b>RADS Annotator</b><span>H-01 – H-08 · YOLO11s dataset</span></div>
+    <div class="field"><label for="annotator">Annotator</label>
+      <select id="annotator">
+        <option>Soban Khan</option><option>Basima Maham</option><option>Tahreem Fatima</option><option value="other">Other…</option>
+      </select></div>
+    <button class="btn" id="btnImportVideo" title="Import one or more video clips">Import video</button>
+    <button class="btn" id="btnImportZip" title="Open a dataset ZIP exported by this tool (yours or a teammate's)">Open dataset ZIP</button>
+    <button class="btn" id="btnClasses">Classes</button>
+    <button class="btn primary" id="btnExport">Export dataset</button>
+    <input type="file" id="fileVideo" accept="video/*,.mp4,.mov,.avi,.mkv,.webm" multiple hidden>
+    <input type="file" id="fileZip" accept=".zip,application/zip" hidden>
+  </header>
+
+  <div class="work">
+    <aside class="rail left">
+      <section class="sec">
+        <h3>Clips <span class="count" id="clipCount">0</span></h3>
+        <div id="clipList" class="frames"></div>
+        <details class="box" id="clipMetaBox" open hidden>
+          <summary>Recording details for this clip</summary>
+          <div class="in grid2" id="clipMeta"></div>
+        </details>
+      </section>
+      <section class="sec" id="evSec" hidden>
+        <h3>Event intervals <span class="count" id="evCount">0</span><span class="sp"></span>
+          <button class="btn sm" id="btnIn" title="Mark event start (I)">In</button><button class="btn sm" id="btnOut" title="Mark event end (O)">Out</button></h3>
+        <div class="empty" id="evHint">For H-04, H-05 and H-07, mark when the event starts (I) and ends (O) on the timeline.</div>
+        <div id="evList" class="frames"></div>
+      </section>
+      <section class="sec" style="flex:1">
+        <h3>Captured frames <span class="count" id="frameCount">0</span><span class="sp"></span>
+          <select id="frameFilter" style="height:24px;font-size:11px">
+            <option value="all">All clips</option><option value="clip">This clip</option><option value="violation">Has violations</option><option value="background">Background only</option><option value="review">Needs review</option><option value="check">Copied boxes to check</option>
+          </select></h3>
+        <div id="frameList" class="frames"></div>
+      </section>
+    </aside>
+
+    <section class="center">
+      <div class="stagebar">
+        <div class="seg" role="tablist"><button id="modeVideo" class="on">Video</button><button id="modeFrame">Frame</button></div>
+        <span id="edTools" hidden style="display:contents">
+          <div class="seg"><button id="toolDraw" class="on" title="Draw boxes (B)">Draw</button><button id="toolSelect" title="Select / move (V)">Select</button></div>
+          <button class="btn icon" id="btnUndo" title="Undo (Ctrl+Z)">↶</button>
+          <button class="btn icon" id="btnRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
+          <button class="btn" id="btnFit" title="Fit image (F)">Fit</button>
+          <button class="btn" id="btnLabels" title="Show or hide labels (H)">Labels</button>
+          <button class="btn" id="btnFocus" title="Show only boxes of the selected class (G)">Focus</button>
+          <button class="btn" id="btnPrev" title="Previous frame ([)">‹</button>
+          <button class="btn" id="btnNext" title="Next frame (])">›</button>
+          <button class="btn" id="btnPastePrev" title="Copy all boxes from the previous captured frame (P)">Paste prev</button>
+          <button class="btn primary" id="btnConfirm" title="Boxes are right: clear 'copied' marks and go to the next frame (Enter)">OK ✓ next</button>
+          <button class="btn" id="btnDelFrame" title="Delete this captured frame">Delete frame</button>
+        </span>
+        <span class="info" id="stageInfo"></span>
+      </div>
+      <div class="stage" id="stage">
+        <video id="vid" playsinline muted preload="auto" hidden></video>
+        <canvas id="ed" hidden></canvas>
+        <div class="novideo" id="noVideo" hidden></div>
+        <div class="drop" id="drop">
+          <div class="card">
+            <h2>Drop a CCTV clip here to start</h2>
+            <ol>
+              <li><b>Import</b> a clip and fill its recording details (restaurant, camera view, session).</li>
+              <li><b>Scrub</b> the timeline to the moment you want and press <b>Capture</b> (C).</li>
+              <li><b>Draw boxes</b> and pick a class for each, then set hazard, worker ID and status.</li>
+              <li><b>Export</b> a ZIP with raw images, annotated images, YOLO labels and metadata.</li>
+            </ol>
+            <button class="btn primary" id="btnImportVideo2">Import video</button>
+            <div class="empty">Videos never leave your computer. Captured frames are kept in this browser until you export.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rail right">
+      <section class="sec">
+        <h3>Classes<span class="sp"></span><input type="text" id="clsFilter" placeholder="Filter…" style="height:24px;width:110px;font-size:12px"></h3>
+        <div class="classes" id="classList"></div>
+      </section>
+      <section class="sec" id="boxSec" hidden>
+        <h3>Boxes in frame <span class="count" id="boxCount">0</span></h3>
+        <div class="boxlist" id="boxList"></div>
+        <div id="boxProps" class="grid2" hidden></div>
+      </section>
+      <section class="sec" id="frameSec" hidden>
+        <h3>Frame details</h3>
+        <div class="grid2" id="frameMeta"></div>
+      </section>
+      <section class="sec">
+        <h3>Shortcuts</h3>
+        <div class="kbd">
+          <div><b>Space</b> play / pause</div><div><b>← →</b> 1 frame</div><div><b>⇧← →</b> 1 second</div>
+          <div><b>C</b> capture</div><div><b>I / O</b> event in / out</div><div><b>B / V</b> draw / select</div>
+          <div><b>1–9</b> pick class</div><div><b>Del</b> delete box</div><div><b>Ctrl+Z</b> undo</div>
+          <div><b>Ctrl+D</b> duplicate box</div><div><b>F</b> fit</div><div><b>H</b> labels</div><div><b>G</b> focus on class</div><div><b>P</b> paste prev boxes</div><div><b>Enter</b> OK, next frame</div><div><b>Ctrl+C/V</b> copy box</div>
+          <div><b>[ ]</b> prev / next frame</div><div><b>Esc</b> back to video</div><div><b>Wheel</b> zoom</div><div><b>Space-drag</b> pan</div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="dock">
+    <div class="transport">
+      <button class="btn icon" id="tBack1s" title="Back 1 s (Shift+←)">«</button>
+      <button class="btn icon" id="tBack1f" title="Back 1 frame (←)">‹</button>
+      <button class="btn icon" id="tPlay" title="Play / pause (Space)">▶</button>
+      <button class="btn icon" id="tFwd1f" title="Forward 1 frame (→)">›</button>
+      <button class="btn icon" id="tFwd1s" title="Forward 1 s (Shift+→)">»</button>
+      <div class="tc" id="tc">00:00:00:00<small>frame 0 / 0</small></div>
+      <div class="field"><label for="fps">FPS</label><input type="number" id="fps" class="fps" min="1" max="120" step="0.001" value="25"></div>
+      <div class="field"><label for="rate">Speed</label><select id="rate"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></div>
+      <span class="grow"></span>
+      <div class="field"><label for="zoom">Zoom</label><input type="range" id="zoom" class="zoom" min="0" max="100" value="0"></div>
+      <label class="field" title="New captures start with the boxes of the previous captured frame (up to 15 s earlier)"><input type="checkbox" id="carryChk" checked> <span class="lbl">Copy boxes</span></label>
+      <div class="field" title="Burst: capture several frames in a row"><select id="burstStep" aria-label="Burst step"><option value="0.5">every 0.5 s</option><option value="1" selected>every 1 s</option><option value="2">every 2 s</option><option value="3">every 3 s</option></select><select id="burstCount" aria-label="Burst count"><option>5</option><option selected>10</option><option>20</option></select><button class="btn" id="btnBurst">Burst</button></div>
+      <button class="capture" id="btnCapture" disabled title="Capture this frame (C)"><span class="dot"></span>Capture frame</button>
+    </div>
+    <canvas id="tl" aria-label="Timeline. Drag to scrub."></canvas>
+  </footer>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); }
+  for (const c of kids) if (c != null) e.append(c); return e; };
+const uid = () => Math.random().toString(36).slice(2, 10);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const nowISO = () => new Date().toISOString();
+
+/* ---------------- reference data (from SRS §1, §3.14.1, §2.6) ---------------- */
+const HAZARDS = [
+  ['H-01','Missing hair restraint / head cover'],
+  ['H-02','Bare-hand contact with RTE food'],
+  ['H-03','Smoking / vaping in prep area'],
+  ['H-04','Phone use during food handling'],
+  ['H-05','Open / overflowing waste bin'],
+  ['H-06','Missing / soiled apron or uniform'],
+  ['H-07','No hand hygiene: raw meat → RTE'],
+  ['H-08','Missing required face mask'],
+];
+const STATUSES = [['violation','Violation'],['compliant','Compliant'],['hard_negative','Hard negative'],['context','Context object'],['unsure','Unsure']];
+const VIEWS = [['A','A · High diagonal (2.5–3.5 m)'],['B','B · Distant diagonal (4–7 m)'],['C','C · Medium task (2–4 m)'],['other','Other']];
+const SCEN = [['positive','Positive (staged violation)'],['compliant_negative','Compliant negative'],['hard_negative','Hard negative'],['natural','Natural background'],['public','Public dataset']];
+const ZONES = [['prep','Food-prep zone'],['rte','RTE / cooked-food station'],['raw','Raw-meat station'],['sink','Sink / handwash'],['waste','Waste area'],['cooking','Cooking line'],['other','Other']];
+const LIGHT = [['normal','Normal'],['bright','Bright'],['dim','Dim'],['mixed','Mixed / backlit']];
+const SPLITS = [['unassigned','Unassigned'],['train','Train'],['val','Validation'],['test','Final test (held out)']];
+const FSTAT = [['in_progress','In progress'],['done','Done']];
+const RSTAT = [['pending','Pending review'],['approved','Approved'],['needs_fix','Needs fix']];
+
+const DEFAULT_CLASSES = [
+  ['person','People & PPE',[],'context','#E6E6E6'],
+  ['head_covered','People & PPE',['H-01'],'compliant','#4CC38A'],
+  ['head_uncovered','People & PPE',['H-01'],'violation','#FF5C5C'],
+  ['mask_on','People & PPE',['H-08'],'compliant','#3FB6E8'],
+  ['mask_off','People & PPE',['H-08'],'violation','#FF7A45'],
+  ['mask_incorrect','People & PPE',['H-08'],'violation','#FFA940'],
+  ['apron','People & PPE',['H-06'],'compliant','#8FD14F'],
+  ['no_apron','People & PPE',['H-06'],'violation','#F5455C'],
+  ['apron_soiled','People & PPE',['H-06'],'violation','#C77C3A'],
+  ['hand_bare','Hands & food',['H-02','H-07'],'context','#FFC53D'],
+  ['hand_gloved','Hands & food',['H-02','H-07'],'compliant','#36CFC9'],
+  ['rte_food','Hands & food',['H-02','H-07'],'context','#B37FEB'],
+  ['raw_meat','Hands & food',['H-07'],'context','#F759AB'],
+  ['utensil','Hands & food',['H-02'],'context','#95A3B8'],
+  ['smoking','Smoking & phone',['H-03'],'violation','#EB2F96'],
+  ['phone_in_hand','Smoking & phone',['H-04'],'violation','#597EF7'],
+  ['phone','Smoking & phone',['H-04'],'hard_negative','#9BA9D9'],
+  ['bin_closed','Waste',['H-05'],'compliant','#73D13D'],
+  ['bin_open','Waste',['H-05'],'violation','#FA8C16'],
+  ['bin_overflow','Waste',['H-05'],'violation','#D4380D'],
+  ['sink','Hygiene',['H-07'],'context','#5CDBD3'],
+  ['handwashing','Hygiene',['H-07'],'compliant','#13C2C2'],
+  ['glove_change','Hygiene',['H-07'],'compliant','#69B1FF'],
+].map(([name,group,hz,def,color],id)=>({id,name,group,hz,def,color}));
+/* Class set 3 (7 Nov 2026): cigarette/vape/smoke merged into smoking; phones are phone_in_hand (held) or phone (not held). */
+const CLASS_SET = 3;
+const CLASS_ALIAS = { cigarette: 'smoking', vape: 'smoking', smoke: 'smoking', phone_idle: 'phone' };
+function migrateClasses(){
+  if (S.classSet === CLASS_SET) return;
+  const oldName = Object.fromEntries((S.classes || []).map(c => [c.id, c.name]));
+  const next = structuredClone(DEFAULT_CLASSES);
+  for (const c of S.classes || []) if (!next.some(d => d.name === c.name) && !CLASS_ALIAS[c.name]) next.push({ ...c, id: next.length });
+  const idOf = n => next.find(c => c.name === (CLASS_ALIAS[n] || n))?.id;
+  for (const f of Object.values(S.frames)) for (const b of f.boxes) { const on = oldName[b.cls]; const ni = idOf(on); if (ni != null) { b.cls = ni; if (CLASS_ALIAS[on]) { b.hazard = next[ni].hz[0]; b.status = next[ni].def; } } }
+  S.classes = next; S.classSet = CLASS_SET; S.activeClass = 0;
+}
+
+/* ---------------- state ---------------- */
+const S = {
+  version: 1, classSet: 3, classes: structuredClone(DEFAULT_CLASSES), clips: {}, frames: {}, order: [],
+  activeClip: null, activeFrame: null, activeClass: 0, mode: 'video', tool: 'draw', showLabels: true,
+  imageFormat: 'jpg', lastEvent: { hazard: 'H-04', status: 'violation', worker_id: '' },
+};
+const runtime = { urls: {}, files: {}, thumbs: {}, imgs: {}, blobs: {}, pendingIn: null, selEvent: null, undo: {}, redo: {} };
+let annotator = 'Soban Khan';
+
+/* ---------------- persistence (IndexedDB, per browser) ---------------- */
+let idb = null;
+function openDB(){ return new Promise(res => { try { const r = indexedDB.open('rads-annotator', 1);
+  r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('images'); };
+  r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch { res(null); } }); }
+function idbPut(store, key, val){ if (!idb) return Promise.resolve(); return new Promise(res => { try { const tx = idb.transaction(store,'readwrite'); tx.objectStore(store).put(val, key); tx.oncomplete = res; tx.onerror = res; } catch { res(); } }); }
+function idbGet(store, key){ if (!idb) return Promise.resolve(null); return new Promise(res => { try { const q = idb.transaction(store).objectStore(store).get(key); q.onsuccess = () => res(q.result ?? null); q.onerror = () => res(null); } catch { res(null); } }); }
+function idbDel(store, key){ if (!idb) return Promise.resolve(); return new Promise(res => { try { const tx = idb.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = res; tx.onerror = res; } catch { res(); } }); }
+let saveT = 0;
+function persist(){ clearTimeout(saveT); saveT = setTimeout(() => { const copy = { ...S }; idbPut('kv','state', JSON.parse(JSON.stringify(copy))); }, 400); }
+function lsGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k,v){ try { localStorage.setItem(k,v); } catch {} }
+
+/* ---------------- toast & modal ---------------- */
+let toastT = 0;
+function toast(msg, ms = 2600){ document.querySelectorAll('.toast').forEach(t => t.remove()); const t = el('div',{class:'toast',role:'status',text:msg}); document.body.append(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), ms); }
+function modal(build){ const root = $('#modalRoot'); root.innerHTML = ''; const wrap = el('div',{class:'modal'}); const m = el('div',{class:'m'}); wrap.append(m); root.append(wrap);
+  const close = () => root.innerHTML = ''; wrap.addEventListener('pointerdown', e => { if (e.target === wrap) close(); }); build(m, close); return close; }
+function confirmBox(title, text, okLabel){ return new Promise(res => modal((m, close) => {
+  m.append(el('h2',{text:title}), el('p',{text}), el('div',{class:'acts'},
+    el('button',{class:'btn',text:'Cancel',onclick:()=>{close();res(false);}}),
+    el('button',{class:'btn primary',text:okLabel,onclick:()=>{close();res(true);}}))); })); }
+
+/* ---------------- helpers ---------------- */
+const slug = s => String(s || '').trim().replace(/\.[a-z0-9]{2,4}$/i,'').replace(/[^A-Za-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40) || 'x';
+const clip = () => S.clips[S.activeClip] || null;
+const frame = () => S.frames[S.activeFrame] || null;
+const cls = id => S.classes.find(c => c.id === id) || { id, name: 'class_' + id, color: '#999', hz: [], def: 'context', group: 'Other' };
+function fmtTC(t, fps){ t = Math.max(0, t || 0); const f = Math.floor((t % 1) * fps + 1e-6); const s = Math.floor(t);
+  const p = n => String(n).padStart(2,'0'); return `${p(Math.floor(s/3600))}:${p(Math.floor(s/60)%60)}:${p(s%60)}:${p(f)}`; }
+function fmtShort(t){ const m = Math.floor(t/60), s = t - m*60; return m ? `${m}:${s.toFixed(1).padStart(4,'0')}` : `${s.toFixed(1)}s`; }
+const frameIdx = (t, fps) => Math.floor(t * fps + 1e-6);
+const defaultClipMeta = () => ({ restaurant_id: lsGet('rads.rest') || 'R01', camera_view: 'A', camera_id: 'CAM1', session_id: 'S01', scenario_id: '', scenario_type: 'positive', recording_date: new Date().toISOString().slice(0,10), zone: 'prep', lighting: 'normal', split: 'unassigned', notes: '' });
+
+/* ---------------- downloads (claude capability with browser fallback) ---------------- */
+const dlP = (window.claude && typeof window.claude.use === 'function') ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+async function saveFile(filename, blob){
+  const d = await dlP;
+  if (d) { try { await d.save({ filename, data: blob }); toast('Saved ' + filename); return true; }
+    catch (e) { if (e && e.code === 'declined') { toast('Save cancelled'); return false; }
+      if (e && e.code === 'rate_limited') { toast('A save prompt is already open'); return false; }
+      if (e && e.code === 'too_large') { toast('This export is too large for this view. Export one clip at a time.'); return false; } } }
+  try { const a = el('a',{href: URL.createObjectURL(blob), download: filename}); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); toast('Downloading ' + filename); return true; }
+  catch { toast('This view cannot save files. Open the tool in a browser tab.'); return false; }
+}
+
+/* ---------------- video import ---------------- */
+const vid = $('#vid');
+function clipKey(f){ return slug(f.name) + '-' + f.size.toString(36); }
+async function importVideos(files){
+  let first = null;
+  for (const f of files) {
+    if (!f.type.startsWith('video/') && !/\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(f.name)) { toast(f.name + ' is not a video file'); continue; }
+    const id = clipKey(f);
+    if (!S.clips[id]) S.clips[id] = { id, name: f.name, size: f.size, duration: 0, width: 0, height: 0, fps: +($('#fps').value) || 25, meta: defaultClipMeta(), events: [], added_by: annotator, added_at: nowISO() };
+    if (runtime.urls[id]) URL.revokeObjectURL(runtime.urls[id]);
+    runtime.urls[id] = URL.createObjectURL(f); runtime.files[id] = f;
+    first = first || id;
+  }
+  if (first) { selectClip(first); persist(); }
+}
+function selectClip(id){
+  S.activeClip = id; const c = clip(); runtime.pendingIn = null; runtime.selEvent = null;
+  if (c) $('#fps').value = c.fps;
+  setMode('video');
+  if (c && runtime.urls[id]) { if (vid.dataset.clip !== id) { vid.dataset.clip = id; vid.src = runtime.urls[id]; vid.load(); } }
+  else { vid.removeAttribute('src'); vid.dataset.clip = ''; vid.load(); }
+  view.start = 0; view.pps = 0;
+  renderAll(); persist();
+}
+vid.addEventListener('loadedmetadata', () => {
+  const c = clip(); if (!c) return;
+  c.duration = vid.duration; c.width = vid.videoWidth; c.height = vid.videoHeight;
+  vid.playbackRate = +$('#rate').value; view.pps = 0; fitTimeline(); makeThumbs(c.id); renderAll(); persist();
+});
+vid.addEventListener('error', () => { if (vid.getAttribute('src')) toast('This browser cannot play that video format. Convert it to MP4 (H.264) or WebM and import again.', 5000); });
+['timeupdate','seeked','play','pause'].forEach(ev => vid.addEventListener(ev, () => { updateTC(); drawTL(); $('#tPlay').textContent = vid.paused ? '▶' : '❚❚'; }));
+function playLoop(){ if (!vid.paused) { followPlayhead(); updateTC(); drawTL(); requestAnimationFrame(playLoop); } }
+vid.addEventListener('play', () => requestAnimationFrame(playLoop));
+
+/* filmstrip thumbnails */
+async function makeThumbs(id){
+  const url = runtime.urls[id]; const c = S.clips[id]; if (!url || !c || !c.duration) return;
+  const N = Math.min(80, Math.max(12, Math.ceil(c.duration / 2)));
+  const v2 = document.createElement('video'); v2.muted = true; v2.preload = 'auto'; v2.src = url;
+  await new Promise(r => { v2.onloadeddata = r; v2.onerror = r; });
+  const h = 52, w = Math.round(h * (c.width / c.height || 16/9));
+  const list = []; runtime.thumbs[id] = { w, h, list };
+  for (let i = 0; i < N; i++) {
+    const t = (i + .5) * c.duration / N;
+    await new Promise(r => { const done = () => { v2.removeEventListener('seeked', done); r(); }; v2.addEventListener('seeked', done); v2.currentTime = t; setTimeout(done, 1500); });
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    try { cv.getContext('2d').drawImage(v2, 0, 0, w, h); } catch {}
+    list.push({ t, cv }); if (S.activeClip === id && (i % 6 === 5 || i === N - 1)) drawTL();
+  }
+  v2.removeAttribute('src'); v2.load();
+}
+
+/* ---------------- transport ---------------- */
+const fps = () => clip()?.fps || 25;
+function seek(t){ const c = clip(); if (!c || !runtime.urls[c.id]) return; const f = fps(); const last = Math.max(0, Math.floor((c.duration || 0) * f) - 1);
+  const k = clamp(Math.floor(t * f + 1e-6), 0, last); vid.currentTime = (k + 0.5) / f; updateTC(); drawTL(); }
+function step(n){ if (!vid.paused) vid.pause(); const f = fps(); const cur = Math.floor(vid.currentTime * f + 1e-6); seek((cur + n) / f); }
+function updateTC(){ const c = clip(); const t = vid.currentTime || 0; const f = fps();
+  const total = c ? Math.round((c.duration || 0) * f) : 0;
+  $('#tc').innerHTML = ''; $('#tc').append(fmtTC(t, f), el('small',{text:`frame ${frameIdx(t,f)} / ${total} · ${t.toFixed(3)} s`})); }
+$('#tPlay').onclick = () => { if (!clip() || !runtime.urls[S.activeClip]) return; setMode('video'); vid.paused ? vid.play() : vid.pause(); };
+$('#tBack1f').onclick = () => { setMode('video'); step(-1); };
+$('#tFwd1f').onclick = () => { setMode('video'); step(1); };
+$('#tBack1s').onclick = () => { setMode('video'); seek(vid.currentTime - 1); };
+$('#tFwd1s').onclick = () => { setMode('video'); seek(vid.currentTime + 1); };
+$('#rate').onchange = e => vid.playbackRate = +e.target.value;
+$('#fps').onchange = e => { const c = clip(); const v = +e.target.value; if (c && v > 0) { c.fps = v; persist(); updateTC(); drawTL(); } };
+
+/* ---------------- timeline ---------------- */
+const tl = $('#tl'); const tctx = tl.getContext('2d');
+const view = { start: 0, pps: 0 };
+const LANES = { ruler: 20, strip: 52, mark: 34 };
+function tlSize(){ const r = tl.getBoundingClientRect(); const d = devicePixelRatio || 1; const w = Math.max(50, r.width), h = r.height || 118;
+  if (tl.width !== Math.round(w*d) || tl.height !== Math.round(h*d)) { tl.width = Math.round(w*d); tl.height = Math.round(h*d); } return { w, h, d }; }
+function minPPS(){ const c = clip(); const { w } = tlSize(); return c && c.duration ? (w - 16) / c.duration : 50; }
+function maxPPS(){ return Math.max(minPPS() * 1.01, fps() * 18); }
+function fitTimeline(){ view.pps = minPPS(); view.start = -8 / view.pps; $('#zoom').value = 0; }
+function setZoom(z, anchorT){ const lo = Math.log(minPPS()), hi = Math.log(maxPPS()); const { w } = tlSize();
+  const at = anchorT ?? vid.currentTime; const ax = (at - view.start) * view.pps;
+  view.pps = Math.exp(lo + (hi - lo) * z / 100); view.start = at - ax / view.pps; clampView(); drawTL(); }
+function clampView(){ const c = clip(); if (!c) return; const { w } = tlSize(); const span = w / view.pps; const pad = 8 / view.pps;
+  view.start = clamp(view.start, -pad, Math.max(-pad, c.duration - span + pad)); }
+function followPlayhead(){ const { w } = tlSize(); const x = (vid.currentTime - view.start) * view.pps; if (x > w - 40 || x < 0) { view.start = vid.currentTime - 40 / view.pps; clampView(); } }
+const tx = t => (t - view.start) * view.pps;
+function niceStep(){ const steps = [1/fps(), 2/fps(), 5/fps(), .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200]; for (const s of steps) if (s * view.pps >= 80) return s; return 1800; }
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function drawTL(){
+  const { w, h, d } = tlSize(); const ctx = tctx; ctx.setTransform(d,0,0,d,0,0); ctx.clearRect(0,0,w,h);
+  const c = clip(); const fg = cssVar('--fg'), mut = cssVar('--muted'), line = cssVar('--line'), acc = cssVar('--accent'), panel = cssVar('--panel2');
+  ctx.font = `10px ${cssVar('--font-mono')}`;
+  if (!c || !c.duration) { ctx.fillStyle = mut; ctx.textBaseline = 'middle'; ctx.fillText(c ? (runtime.urls[c.id] ? 'Loading clip…' : 'Re-import this clip’s video file to scrub it') : 'Import a video to see its timeline', 12, h/2); return; }
+  if (!view.pps) fitTimeline();
+  const y0 = 0, ys = LANES.ruler, ym = LANES.ruler + LANES.strip + 4;
+  // ruler
+  const st = niceStep(); const minor = st / 5; ctx.strokeStyle = line; ctx.fillStyle = mut; ctx.textBaseline = 'top'; ctx.lineWidth = 1;
+  const t0 = Math.max(0, Math.floor(view.start / minor) * minor), t1 = Math.min(c.duration, view.start + w / view.pps);
+  ctx.beginPath();
+  for (let t = t0; t <= t1 + 1e-9; t += minor) { const x = Math.round(tx(t)) + .5; const major = Math.abs(t / st - Math.round(t / st)) < 1e-6; ctx.moveTo(x, major ? 2 : 12); ctx.lineTo(x, ys - 2);
+    if (major) ctx.fillText(st < 1 ? fmtTC(t, fps()).slice(3) : fmtShort(t), x + 3, 2); }
+  ctx.stroke();
+  // strip
+  const xa = Math.max(0, tx(0)), xb = Math.min(w, tx(c.duration));
+  ctx.fillStyle = panel; ctx.fillRect(xa, ys, xb - xa, LANES.strip);
+  const th = runtime.thumbs[c.id];
+  if (th && th.list.length) { const tw = th.w * (LANES.strip / th.h); ctx.save(); ctx.beginPath(); ctx.rect(xa, ys, xb - xa, LANES.strip); ctx.clip();
+    for (let x = xa; x < xb; x += tw) { const t = view.start + (x + tw/2) / view.pps; let best = th.list[0]; for (const it of th.list) if (Math.abs(it.t - t) < Math.abs(best.t - t)) best = it; ctx.drawImage(best.cv, x, ys, tw, LANES.strip); }
+    ctx.restore(); }
+  ctx.strokeStyle = line; ctx.strokeRect(xa + .5, ys + .5, xb - xa - 1, LANES.strip - 1);
+  // events lane
+  ctx.fillStyle = panel; ctx.fillRect(xa, ym, xb - xa, LANES.mark - 6);
+  ctx.textBaseline = 'middle';
+  for (const ev of c.events) { const a = tx(ev.start), b = tx(ev.end); if (b < 0 || a > w) continue; const col = hazColor(ev.hazard);
+    ctx.fillStyle = col + (runtime.selEvent === ev.id ? 'CC' : '66'); ctx.fillRect(a, ym + 2, Math.max(2, b - a), 12); ctx.fillStyle = fg;
+    if (b - a > 40) ctx.fillText(`${ev.hazard}${ev.worker_id ? ' · ' + ev.worker_id : ''}`, a + 4, ym + 8); }
+  if (runtime.pendingIn != null) { const x = tx(runtime.pendingIn); ctx.setLineDash([3,3]); ctx.strokeStyle = acc; ctx.beginPath(); ctx.moveTo(x, ys); ctx.lineTo(x, h); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = acc; ctx.fillText('IN', x + 3, ym + 8); }
+  // capture markers
+  for (const fid of S.order) { const f = S.frames[fid]; if (!f || f.clipId !== c.id) continue; const x = tx(f.t); if (x < -6 || x > w + 6) continue;
+    const on = fid === S.activeFrame; ctx.fillStyle = on ? acc : (f.boxes.length ? fg : mut);
+    ctx.beginPath(); ctx.moveTo(x, ym + 17); ctx.lineTo(x + 5, ym + 22); ctx.lineTo(x, ym + 27); ctx.lineTo(x - 5, ym + 22); ctx.closePath(); ctx.fill(); }
+  // playhead
+  const px = Math.round(tx(vid.currentTime || 0)) + .5; ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, 6); ctx.lineTo(px, h); ctx.stroke();
+  ctx.fillStyle = acc; ctx.beginPath(); ctx.moveTo(px - 6, 0); ctx.lineTo(px + 6, 0); ctx.lineTo(px + 6, 8); ctx.lineTo(px, 14); ctx.lineTo(px - 6, 8); ctx.closePath(); ctx.fill();
+}
+const hazColor = hz => ({'H-01':'#FF5C5C','H-02':'#FFC53D','H-03':'#EB2F96','H-04':'#597EF7','H-05':'#FA8C16','H-06':'#8FD14F','H-07':'#13C2C2','H-08':'#B37FEB'})[hz] || '#999999';
+let tlDrag = false;
+tl.addEventListener('pointerdown', e => {
+  const c = clip(); if (!c || !c.duration) return; const r = tl.getBoundingClientRect(); const x = e.clientX - r.left, y = e.clientY - r.top;
+  const ym = LANES.ruler + LANES.strip + 4;
+  if (y > ym) { // marker / event lane
+    let hit = null, best = 8; for (const fid of S.order) { const f = S.frames[fid]; if (f?.clipId !== c.id) continue; const dx = Math.abs(tx(f.t) - x); if (dx < best) { best = dx; hit = fid; } }
+    if (hit && y > ym + 14) { openFrame(hit); return; }
+    const ev = c.events.find(ev => x >= tx(ev.start) - 3 && x <= tx(ev.end) + 3);
+    if (ev && y <= ym + 16) { runtime.selEvent = ev.id; setMode('video'); seek(ev.start); renderEvents(); return; }
+  }
+  if (!runtime.urls[c.id]) return;
+  setMode('video'); if (!vid.paused) vid.pause(); tlDrag = true; tl.setPointerCapture(e.pointerId); seek(view.start + x / view.pps);
+});
+tl.addEventListener('pointermove', e => { if (!tlDrag) return; const r = tl.getBoundingClientRect(); let x = e.clientX - r.left; const { w } = tlSize();
+  if (x > w - 12) { view.start += 6 / view.pps; clampView(); } if (x < 12) { view.start -= 6 / view.pps; clampView(); }
+  seek(view.start + clamp(x, 0, w) / view.pps); });
+tl.addEventListener('pointerup', () => tlDrag = false); tl.addEventListener('pointercancel', () => tlDrag = false);
+tl.addEventListener('wheel', e => { const c = clip(); if (!c || !c.duration) return; e.preventDefault(); const r = tl.getBoundingClientRect();
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) { view.start += (e.deltaX || e.deltaY) / view.pps; clampView(); drawTL(); return; }
+  const z = clamp(+$('#zoom').value - Math.sign(e.deltaY) * 6, 0, 100); $('#zoom').value = z; setZoom(z, view.start + (e.clientX - r.left) / view.pps); }, { passive: false });
+$('#zoom').oninput = e => setZoom(+e.target.value);
+new ResizeObserver(() => { if (clip()) { const z = +$('#zoom').value; if (z === 0) fitTimeline(); else clampView(); } drawTL(); edResize(); }).observe(document.body);
+
+/* ---------------- events (temporal intervals) ---------------- */
+function markIn(){ if (!clip() || !runtime.urls[S.activeClip]) return; runtime.pendingIn = vid.currentTime; toast('Event start marked at ' + fmtTC(vid.currentTime, fps()) + '. Move to the end and press O.'); drawTL(); }
+function markOut(){ const c = clip(); if (!c) return; if (runtime.pendingIn == null) { toast('Mark the start first (I)'); return; }
+  let a = runtime.pendingIn, b = vid.currentTime; if (b < a) [a, b] = [b, a]; if (b - a < 1 / fps()) { toast('The event needs to be at least one frame long'); return; }
+  const ev = { id: uid(), start: +a.toFixed(4), end: +b.toFixed(4), start_frame: frameIdx(a, fps()), end_frame: frameIdx(b, fps()), hazard: S.lastEvent.hazard, worker_id: S.lastEvent.worker_id, status: S.lastEvent.status, note: '', annotator, created_at: nowISO() };
+  c.events.push(ev); c.events.sort((x, y) => x.start - y.start); runtime.pendingIn = null; runtime.selEvent = ev.id; renderEvents(); drawTL(); persist(); toast('Event saved: ' + fmtShort(a) + ' → ' + fmtShort(b)); }
+$('#btnIn').onclick = markIn; $('#btnOut').onclick = markOut;
+function selectEl(opts, val, onchange, attrs = {}){ const s = el('select', attrs); for (const [v, l] of opts) s.append(el('option', { value: v, text: l, selected: v === val })); s.onchange = () => onchange(s.value); return s; }
+function renderEvents(){
+  const c = clip(); $('#evSec').hidden = !c; if (!c) return;
+  $('#evCount').textContent = c.events.length; $('#evHint').hidden = c.events.length > 0;
+  const L = $('#evList'); L.innerHTML = '';
+  for (const ev of c.events) {
+    const upd = (k, v) => { ev[k] = v; if (k !== 'note') S.lastEvent[k] = v; persist(); drawTL(); };
+    const row = el('div', { class: 'ev' + (runtime.selEvent === ev.id ? ' sel' : '') },
+      el('span', { class: 't', title: 'Jump to start', text: fmtTC(ev.start, fps()), onclick: () => { runtime.selEvent = ev.id; setMode('video'); seek(ev.start); renderEvents(); } }),
+      el('span', { class: 't', title: 'Jump to end', text: '→ ' + fmtTC(ev.end, fps()), onclick: () => { setMode('video'); seek(ev.end); } }),
+      el('button', { class: 'btn sm', text: '✕', title: 'Delete event', onclick: () => { c.events = c.events.filter(x => x !== ev); renderEvents(); drawTL(); persist(); } }),
+      el('div', { class: 'row' },
+        selectEl(HAZARDS.map(([id]) => [id, id]), ev.hazard, v => upd('hazard', v), { 'aria-label': 'Hazard' }),
+        el('input', { type: 'text', value: ev.worker_id, placeholder: 'Worker ID', 'aria-label': 'Worker ID', oninput: e => upd('worker_id', e.target.value.trim()) }),
+        selectEl(STATUSES.filter(s => s[0] !== 'context'), ev.status, v => upd('status', v), { 'aria-label': 'Status' })));
+    L.append(row);
+  }
+}
+
+/* ---------------- capture ---------------- */
+/* Nearest earlier captured frame of the same clip (optionally within maxGap seconds). */
+function prevCaptured(clipId, t, maxGap = Infinity){ let best = null; for (const id of S.order) { const f = S.frames[id]; if (!f || f.clipId !== clipId || f.t >= t - 1e-6) continue; if (t - f.t > maxGap) continue; if (!best || f.t > best.t) best = f; } return best; }
+const copyBoxes = (boxes, carried = true) => boxes.map(b => { const n = { ...structuredClone(b), id: uid(), created_at: nowISO(), annotator }; if (carried) n.carried = true; else delete n.carried; return n; });
+const CARRY_MAX_GAP = 15;
+async function capture(opts = {}){
+  const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return null; }
+  if (!vid.paused) { vid.pause(); seek(vid.currentTime); }
+  if (vid.seeking) await new Promise(r => { vid.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); });
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const t = vid.currentTime, f = c.fps, fi = frameIdx(t, f), m = c.meta;
+  const id = `${slug(m.restaurant_id)}_${slug(m.camera_view)}_${slug(m.session_id)}_${slug(c.name)}_f${String(fi).padStart(6,'0')}`;
+  if (S.frames[id]) { if (opts.noOpen) return id; openFrame(id); toast('This frame was already captured, opened it'); return id; }
+  const W = vid.videoWidth, H = vid.videoHeight; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d'); ctx.drawImage(vid, 0, 0, W, H);
+  const mime = S.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+  const blob = await new Promise(r => cv.toBlob(r, mime, 0.95));
+  const tcv = document.createElement('canvas'); tcv.width = 160; tcv.height = Math.round(160 * H / W); tcv.getContext('2d').drawImage(cv, 0, 0, tcv.width, tcv.height);
+  const fr = { id, clipId: c.id, clipName: c.name, t: +t.toFixed(4), frameIndex: fi, fps: f, width: W, height: H, ext: S.imageFormat, thumb: tcv.toDataURL('image/jpeg', 0.7),
+    captured_at: nowISO(), updated_at: nowISO(), annotator, boxes: [],
+    meta: { ...structuredClone(m), hazards_marked: [], review_status: 'pending', reviewer: '', frame_notes: '' } };
+  let carriedFrom = null;
+  if (S.carryForward !== false) { const src = prevCaptured(c.id, t, CARRY_MAX_GAP); if (src && src.boxes.length) { fr.boxes = copyBoxes(src.boxes); carriedFrom = src; } }
+  S.frames[id] = fr; S.order.push(id); S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
+  runtime.blobs[id] = blob; cacheImg(id, cv); idbPut('images', id, blob);
+  if (!opts.noOpen) openFrame(id); else { renderFrames(); drawTL(); }
+  S.sinceExport = (S.sinceExport || 0) + 1; persist();
+  if (S.sinceExport % 50 === 0) toast(`${S.sinceExport} frames since your last export. Export a backup now (Export dataset).`, 6000);
+  else if (!opts.quiet) toast(carriedFrom ? `Captured frame ${fi} with ${fr.boxes.length} boxes copied from f${carriedFrom.frameIndex}. Fix what moved, then press Enter.` : `Captured frame ${fi} (${fmtTC(t, f)})`, carriedFrom ? 4000 : 2600);
+  return id;
+}
+$('#btnCapture').onclick = () => capture();
+/* Burst: capture a run of frames at a fixed step; each gets the previous frame's boxes. */
+let burstRunning = false, burstStop = false;
+async function burst(){
+  if (burstRunning) { burstStop = true; return; }
+  const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return; }
+  const step = +$('#burstStep').value, n = +$('#burstCount').value; const t0 = vid.currentTime; const ids = [];
+  burstRunning = true; burstStop = false; const btn = $('#btnBurst');
+  try {
+    for (let k = 0; k < n && !burstStop; k++) { const tt = t0 + k * step; if (tt >= c.duration - 1e-3) break;
+      seek(tt); if (vid.seeking) await new Promise(r => { vid.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); });
+      const id = await capture({ noOpen: true, quiet: true }); if (id && !ids.includes(id)) ids.push(id); btn.textContent = `Stop ${k + 1}/${n}`; }
+  } finally { burstRunning = false; btn.textContent = 'Burst'; }
+  if (ids.length) { openFrame(ids[0]); toast(`Captured ${ids.length} frames. Go through them with ] , fix boxes that moved, press Enter on each.`, 6000); }
+}
+$('#btnBurst').onclick = burst;
+$('#carryChk').checked = S.carryForward !== false;
+$('#carryChk').onchange = e => { S.carryForward = e.target.checked; persist(); };
+
+/* ---------------- mode switching ---------------- */
+function setMode(m){
+  if (m === 'frame' && !frame()) m = 'video';
+  S.mode = m; $('#modeVideo').classList.toggle('on', m === 'video'); $('#modeFrame').classList.toggle('on', m === 'frame');
+  $('#edTools').hidden = m !== 'frame'; $('#edTools').style.display = m === 'frame' ? 'contents' : 'none';
+  const c = clip(); const hasVid = !!(c && runtime.urls[c.id]);
+  $('#drop').hidden = !!c || m === 'frame';
+  vid.hidden = !(m === 'video' && hasVid); $('#ed').hidden = m !== 'frame';
+  $('#noVideo').hidden = !(m === 'video' && c && !hasVid);
+  if (c && !hasVid) { $('#noVideo').innerHTML = ''; $('#noVideo').append(el('div', {}, el('p', { text: `The video file for “${c.name}” is not loaded in this browser.` }), el('p', { text: 'Import the same file again to scrub and capture more frames. Its captured frames are still listed on the left.' }), el('button', { class: 'btn primary', text: 'Import video', onclick: () => $('#fileVideo').click() }))); }
+  $('#btnCapture').disabled = !hasVid;
+  if (m !== 'video' && !vid.paused) vid.pause();
+  renderStageInfo(); renderSidePanels(); if (m === 'frame') { edResize(); fitImage(); }
+}
+$('#modeVideo').onclick = () => setMode('video');
+$('#modeFrame').onclick = () => { if (!frame()) { const ids = visibleFrames(); if (ids.length) { openFrame(ids[ids.length - 1]); return; } toast('Capture a frame first (C)'); return; } setMode('frame'); };
+function renderStageInfo(){ const c = clip(), f = frame(); let s = '';
+  if (S.mode === 'frame' && f) s = `${f.id} · ${f.width}×${f.height} · ${fmtTC(f.t, f.fps)}`;
+  else if (c) s = `${c.name}${c.width ? ` · ${c.width}×${c.height}` : ''}${c.duration ? ` · ${fmtShort(c.duration)}` : ''}`;
+  $('#stageInfo').textContent = s; }
+
+/* ---------------- frame open & image cache ---------------- */
+/* Keep at most a few full-size images in memory. Older ones are released and re-read from browser storage when needed. */
+const IMG_CACHE_MAX = 6; const imgOrder = [];
+function releaseImg(im){ try { if (im && typeof im.close === 'function') im.close(); else if (im) { im.width = 0; im.height = 0; } } catch {} }
+function cacheImg(id, img){
+  runtime.imgs[id] = img; const i = imgOrder.indexOf(id); if (i >= 0) imgOrder.splice(i, 1); imgOrder.push(id);
+  while (imgOrder.length > IMG_CACHE_MAX) { const k = imgOrder.findIndex(x => x !== S.activeFrame); if (k < 0) break; const old = imgOrder.splice(k, 1)[0]; releaseImg(runtime.imgs[old]); delete runtime.imgs[old]; }
+}
+async function getImage(id){
+  if (runtime.imgs[id]) return runtime.imgs[id];
+  let blob = runtime.blobs[id] || await idbGet('images', id); if (!blob) return null;
+  const img = await createImageBitmap(blob).catch(() => null); if (img) cacheImg(id, img); return img;
+}
+async function openFrame(id){
+  const f = S.frames[id]; if (!f) return; S.activeFrame = id; sel = null;
+  if (S.activeClip !== f.clipId && S.clips[f.clipId]) { S.activeClip = f.clipId; const c = clip(); $('#fps').value = c.fps;
+    if (runtime.urls[c.id] && vid.dataset.clip !== c.id) { vid.dataset.clip = c.id; vid.src = runtime.urls[c.id]; vid.load(); } view.pps = 0; }
+  if (runtime.urls[f.clipId] && Math.abs(vid.currentTime - f.t) > 1e-3) { const go = () => { vid.currentTime = f.t; }; vid.readyState >= 1 ? go() : vid.addEventListener('loadedmetadata', go, { once: true }); }
+  await getImage(id); setMode('frame'); renderAll(); persist();
+  const fl = document.querySelector(`.fr[data-id="${CSS.escape(id)}"]`); fl?.scrollIntoView({ block: 'nearest' });
+}
+function visibleFrames(){ const flt = $('#frameFilter').value;
+  return S.order.filter(id => { const f = S.frames[id]; if (!f) return false;
+    if (flt === 'clip') return f.clipId === S.activeClip; if (flt === 'check') return f.boxes.some(b => b.carried); if (flt === 'violation') return f.boxes.some(b => b.status === 'violation'); if (flt === 'background') return !f.boxes.length; if (flt === 'review') return f.meta.review_status !== 'approved'; return true; }); }
+function navFrame(d){ const ids = visibleFrames(); if (!ids.length) return; let i = ids.indexOf(S.activeFrame); i = i < 0 ? 0 : clamp(i + d, 0, ids.length - 1); openFrame(ids[i]); }
+$('#btnPrev').onclick = () => navFrame(-1); $('#btnNext').onclick = () => navFrame(1);
+$('#btnDelFrame').onclick = async () => { const f = frame(); if (!f) return;
+  if (!(await confirmBox('Delete this frame?', `${f.id} and its ${f.boxes.length} box(es) will be removed from this browser. Exported ZIPs are not affected.`, 'Delete frame'))) return;
+  const ids = visibleFrames(); const i = ids.indexOf(f.id); delete S.frames[f.id]; S.order = S.order.filter(x => x !== f.id); idbDel('images', f.id); delete runtime.imgs[f.id]; delete runtime.blobs[f.id];
+  const next = ids[i + 1] || ids[i - 1]; S.activeFrame = null; if (next && S.frames[next]) openFrame(next); else { setMode('video'); renderAll(); } persist(); };
+$('#frameFilter').onchange = renderFrames;
+
+/* ---------------- annotation editor ---------------- */
+const ed = $('#ed'); const ectx = ed.getContext('2d');
+const ev = { scale: 1, ox: 0, oy: 0, w: 0, h: 0 };
+let sel = null, drag = null, mouse = null, spaceDown = false;
+function edResize(){ const r = ed.getBoundingClientRect(); if (!r.width) return; const d = devicePixelRatio || 1; ev.w = r.width; ev.h = r.height; ed.width = Math.round(r.width * d); ed.height = Math.round(r.height * d); drawEd(); }
+function fitImage(){ const f = frame(); if (!f || !ev.w) return; ev.scale = Math.min(ev.w / f.width, ev.h / f.height) * 0.96; ev.ox = (ev.w - f.width * ev.scale) / 2; ev.oy = (ev.h - f.height * ev.scale) / 2; drawEd(); }
+const toImg = (x, y) => ({ x: (x - ev.ox) / ev.scale, y: (y - ev.oy) / ev.scale });
+const toScr = (x, y) => ({ x: ev.ox + x * ev.scale, y: ev.oy + y * ev.scale });
+function boxLabel(b){ const c = cls(b.cls); return `${c.name}${b.worker_id ? ' · ' + b.worker_id : ''}${b.hazard ? ' · ' + b.hazard : ''}${b.status === 'violation' ? ' ⚠' : ''}`; }
+const edLabel = b => boxLabel(b) + (b.carried ? ' · copied?' : '');
+function drawEd(){
+  const d = devicePixelRatio || 1; const ctx = ectx; ctx.setTransform(d,0,0,d,0,0); ctx.clearRect(0,0,ev.w,ev.h);
+  const f = frame(); if (!f) return; const img = runtime.imgs[f.id];
+  ctx.imageSmoothingEnabled = ev.scale < 2;
+  if (img) ctx.drawImage(img, ev.ox, ev.oy, f.width * ev.scale, f.height * ev.scale); else { ctx.fillStyle = '#222'; ctx.fillRect(ev.ox, ev.oy, f.width * ev.scale, f.height * ev.scale); }
+  ctx.font = `600 11px ${cssVar('--font-mono')}`; ctx.textBaseline = 'top';
+  for (const b of f.boxes) {
+    if (hiddenByFocus(b)) continue;
+    const c = cls(b.cls); const p = toScr(b.x, b.y); const w = b.w * ev.scale, h = b.h * ev.scale; const on = sel === b.id;
+    ctx.fillStyle = c.color + (on ? '33' : '1A'); ctx.fillRect(p.x, p.y, w, h);
+    ctx.strokeStyle = c.color; ctx.lineWidth = on ? 2.5 : 1.75; ctx.setLineDash(b.carried ? [2,3] : b.status === 'hard_negative' ? [6,4] : []); ctx.strokeRect(p.x, p.y, w, h); ctx.setLineDash([]);
+    if (S.showLabels || on) { const t = edLabel(b); const tw = ctx.measureText(t).width + 8; const ly = p.y - 16 < 0 ? p.y : p.y - 16;
+      ctx.fillStyle = c.color; ctx.fillRect(p.x, ly, tw, 16); ctx.fillStyle = contrastInk(c.color); ctx.fillText(t, p.x + 4, ly + 2.5); }
+    if (on) { ctx.fillStyle = '#fff'; ctx.strokeStyle = c.color; ctx.lineWidth = 1.5; for (const [hx, hy] of handles(b)) { const q = toScr(hx, hy); ctx.fillRect(q.x - 4, q.y - 4, 8, 8); ctx.strokeRect(q.x - 4, q.y - 4, 8, 8); } }
+  }
+  if (drag && drag.kind === 'new') { const c = cls(S.activeClass); const r = normRect(drag.a, drag.b); const p = toScr(r.x, r.y); ctx.strokeStyle = c.color; ctx.lineWidth = 2; ctx.setLineDash([5,3]); ctx.strokeRect(p.x, p.y, r.w * ev.scale, r.h * ev.scale); ctx.setLineDash([]);
+    ctx.fillStyle = c.color; ctx.fillText(`${c.name}  ${Math.round(r.w)}×${Math.round(r.h)}`, p.x + 3, p.y + r.h * ev.scale + 4); }
+  if (focusMode) { const t = `Focus: ${cls(S.activeClass).name} · G to show all`; ctx.font = `600 12px ${cssVar('--font-mono')}`; const w = ctx.measureText(t).width + 14; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(8, 8, w, 22); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(t, 15, 19); ctx.textBaseline = 'top'; }
+  if (S.tool === 'draw' && mouse && !drag && !spaceDown) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(mouse.x + .5, 0); ctx.lineTo(mouse.x + .5, ev.h); ctx.moveTo(0, mouse.y + .5); ctx.lineTo(ev.w, mouse.y + .5); ctx.stroke(); ctx.setLineDash([]); }
+}
+function contrastInk(hex){ const n = parseInt(hex.slice(1, 7), 16); const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return (r * 299 + g * 587 + b * 114) / 1000 > 140 ? '#111' : '#fff'; }
+function handles(b){ const { x, y, w, h } = b; return [[x,y],[x+w/2,y],[x+w,y],[x+w,y+h/2],[x+w,y+h],[x+w/2,y+h],[x,y+h],[x,y+h/2]]; }
+function normRect(a, b){ const f = frame(); const x1 = clamp(Math.min(a.x, b.x), 0, f.width), y1 = clamp(Math.min(a.y, b.y), 0, f.height), x2 = clamp(Math.max(a.x, b.x), 0, f.width), y2 = clamp(Math.max(a.y, b.y), 0, f.height); return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }; }
+function hitBox(p){ const f = frame(); for (let i = f.boxes.length - 1; i >= 0; i--) { const b = f.boxes[i]; if (hiddenByFocus(b)) continue; if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return b; } return null; }
+function hitHandle(sx, sy){ const f = frame(); const b = f?.boxes.find(b => b.id === sel); if (!b) return -1; const hs = handles(b); for (let i = 0; i < 8; i++) { const q = toScr(...hs[i]); if (Math.abs(q.x - sx) <= 6 && Math.abs(q.y - sy) <= 6) return i; } return -1; }
+const HCUR = ['nwse-resize','ns-resize','nesw-resize','ew-resize','nwse-resize','ns-resize','nesw-resize','ew-resize'];
+function snapshot(){ const f = frame(); if (!f) return; (runtime.undo[f.id] ||= []).push(JSON.stringify(f.boxes)); if (runtime.undo[f.id].length > 100) runtime.undo[f.id].shift(); runtime.redo[f.id] = []; }
+function undo(redo = false){ const f = frame(); if (!f) return; const from = (redo ? runtime.redo : runtime.undo)[f.id], to = (redo ? runtime.undo : runtime.redo); if (!from || !from.length) return;
+  (to[f.id] ||= []).push(JSON.stringify(f.boxes)); f.boxes = JSON.parse(from.pop()); if (!f.boxes.find(b => b.id === sel)) sel = null; touched(); }
+$('#btnUndo').onclick = () => undo(); $('#btnRedo').onclick = () => undo(true);
+function touched(){ const f = frame(); if (f) { f.updated_at = nowISO(); f.last_edited_by = annotator; const b = sel && f.boxes.find(x => x.id === sel); if (b) delete b.carried; } drawEd(); renderBoxes(); renderFrameMeta(); renderFrames(); drawTL(); persist(); }
+function newBox(r){ const c = cls(S.activeClass); return { id: uid(), cls: c.id, x: r.x, y: r.y, w: r.w, h: r.h, hazard: c.hz[0] || '', status: c.def, worker_id: lastWorker, occluded: false, truncated: false, note: '', annotator, created_at: nowISO() }; }
+let lastWorker = '';
+let focusMode = false;
+const hiddenByFocus = b => focusMode && b.cls !== S.activeClass && b.id !== sel;
+ed.addEventListener('pointerdown', e => {
+  const f = frame(); if (!f) return; ed.setPointerCapture(e.pointerId); const r = ed.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; const p = toImg(sx, sy);
+  if (spaceDown || e.button === 1 || e.button === 2) { drag = { kind: 'pan', sx, sy, ox: ev.ox, oy: ev.oy }; return; }
+  const hi = hitHandle(sx, sy);
+  if (hi >= 0) { const b = f.boxes.find(b => b.id === sel); snapshot(); drag = { kind: 'resize', hi, b, orig: { ...b } }; return; }
+  const hb = hitBox(p);
+  if (hb && (S.tool === 'select' || hb.id === sel || e.altKey === false && S.tool === 'select')) { sel = hb.id; snapshot(); drag = { kind: 'move', b: hb, p0: p, orig: { ...hb }, moved: false }; renderBoxes(); drawEd(); return; }
+  if (S.tool === 'draw') { if (p.x < 0 || p.y < 0 || p.x > f.width || p.y > f.height) { sel = null; renderBoxes(); drawEd(); return; } drag = { kind: 'new', a: p, b: p, hb }; return; }
+  sel = hb ? hb.id : null; renderBoxes(); drawEd();
+});
+ed.addEventListener('pointermove', e => {
+  const r = ed.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; mouse = { x: sx, y: sy }; const p = toImg(sx, sy); const f = frame(); if (!f) return;
+  if (!drag) { const hi = hitHandle(sx, sy); ed.style.cursor = spaceDown ? 'grab' : hi >= 0 ? HCUR[hi] : (hitBox(p) && (S.tool === 'select' || hitBox(p).id === sel)) ? 'move' : S.tool === 'draw' ? 'crosshair' : 'default'; if (S.tool === 'draw') drawEd(); return; }
+  if (drag.kind === 'pan') { ev.ox = drag.ox + sx - drag.sx; ev.oy = drag.oy + sy - drag.sy; ed.style.cursor = 'grabbing'; }
+  else if (drag.kind === 'new') drag.b = p;
+  else if (drag.kind === 'move') { const o = drag.orig; drag.b.x = clamp(o.x + p.x - drag.p0.x, 0, f.width - o.w); drag.b.y = clamp(o.y + p.y - drag.p0.y, 0, f.height - o.h); drag.moved = true; }
+  else if (drag.kind === 'resize') { const o = drag.orig, b = drag.b, i = drag.hi; let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h; const px = clamp(p.x, 0, f.width), py = clamp(p.y, 0, f.height);
+    if ([0,6,7].includes(i)) x1 = px; if ([2,3,4].includes(i)) x2 = px; if ([0,1,2].includes(i)) y1 = py; if ([4,5,6].includes(i)) y2 = py;
+    b.x = Math.min(x1, x2); b.y = Math.min(y1, y2); b.w = Math.abs(x2 - x1); b.h = Math.abs(y2 - y1); renderBoxProps(); }
+  drawEd();
+});
+ed.addEventListener('pointerleave', () => { mouse = null; if (!drag) drawEd(); });
+ed.addEventListener('pointerup', () => {
+  const f = frame(); if (!drag || !f) { drag = null; return; } const d = drag; drag = null;
+  if (d.kind === 'new') { const r = normRect(d.a, d.b);
+    if (r.w * ev.scale < 4 || r.h * ev.scale < 4) { if (d.hb) sel = d.hb.id; else sel = null; renderBoxes(); drawEd(); return; }
+    snapshot(); const b = newBox(r); f.boxes.push(b); sel = b.id; touched(); return; }
+  if (d.kind === 'move' && !d.moved) { runtime.undo[f.id]?.pop(); renderBoxes(); drawEd(); return; }
+  if (d.kind === 'resize' || d.kind === 'move') { if (d.b.w < 2 || d.b.h < 2) Object.assign(d.b, d.orig); touched(); }
+  ed.style.cursor = '';
+});
+ed.addEventListener('contextmenu', e => e.preventDefault());
+ed.addEventListener('wheel', e => { if (!frame()) return; e.preventDefault(); const r = ed.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; const p = toImg(sx, sy);
+  const k = Math.exp(-e.deltaY * 0.0015); ev.scale = clamp(ev.scale * k, 0.05, 40); ev.ox = sx - p.x * ev.scale; ev.oy = sy - p.y * ev.scale; drawEd(); }, { passive: false });
+function setTool(t){ S.tool = t; $('#toolDraw').classList.toggle('on', t === 'draw'); $('#toolSelect').classList.toggle('on', t === 'select'); drawEd(); }
+$('#toolDraw').onclick = () => setTool('draw'); $('#toolSelect').onclick = () => setTool('select');
+$('#btnFit').onclick = fitImage;
+$('#btnFocus').onclick = () => { focusMode = !focusMode; $('#btnFocus').classList.toggle('on', focusMode); drawEd(); };
+$('#btnLabels').onclick = () => { S.showLabels = !S.showLabels; $('#btnLabels').classList.toggle('on', S.showLabels); drawEd(); };
+
+/* ---------------- side panels ---------------- */
+function renderClasses(){
+  const L = $('#classList'); L.innerHTML = ''; const q = $('#clsFilter').value.trim().toLowerCase(); let g = null, k = 0;
+  const list = S.classes.filter(c => !q || c.name.includes(q) || c.hz.some(h => h.toLowerCase().includes(q)) || c.group.toLowerCase().includes(q));
+  runtime.keyClasses = list.slice(0, 9).map(c => c.id);
+  for (const c of list) {
+    if (c.group !== g) { g = c.group; L.append(el('div', { class: 'cgroup', text: g })); }
+    const key = k < 9 ? String(++k) : '';
+    const b = el('button', { class: 'cls' + (c.id === S.activeClass ? ' on' : ''), title: `${c.name} (YOLO id ${c.id})${c.hz.length ? ' · ' + c.hz.join(', ') : ''}`, onclick: () => pickClass(c.id) },
+      el('span', { class: 'sw', style: `background:${c.color}` }), el('span', { class: 'n', text: c.name }), el('span', { class: 'k', text: `${c.hz.join(' ')}${key ? '  ' + key : ''}` }));
+    L.append(b);
+  }
+}
+$('#clsFilter').oninput = renderClasses;
+/* In Draw mode a class pick only sets the class for the NEXT box. It re-labels the selected box only in Select mode or from the box's Class dropdown. */
+function pickClass(id, retag = S.tool === 'select'){ S.activeClass = id; const f = frame(); const b = f?.boxes.find(b => b.id === sel);
+  if (retag && b && S.mode === 'frame' && b.cls !== id) { snapshot(); const c = cls(id); b.cls = id; b.hazard = c.hz.includes(b.hazard) ? b.hazard : (c.hz[0] || ''); b.status = c.def; touched(); }
+  renderClasses(); drawEd(); }
+function renderBoxes(){
+  const f = frame(); const on = S.mode === 'frame' && f; $('#boxSec').hidden = !on; if (!on) return;
+  $('#boxCount').textContent = f.boxes.length; const L = $('#boxList'); L.innerHTML = '';
+  if (!f.boxes.length) L.append(el('div', { class: 'empty', text: 'No boxes yet. Pick a class and drag on the image. A frame with no boxes exports as a background (negative) image.' }));
+  f.boxes.forEach((b, i) => { const c = cls(b.cls); L.append(el('div', { class: 'bl' + (b.id === sel ? ' on' : ''), onclick: () => { sel = b.id; renderBoxes(); drawEd(); } },
+    el('i', { style: `background:${c.color}` }), el('span', { text: `${i + 1}. ${c.name}${b.worker_id ? ' · ' + b.worker_id : ''}` }), el('span', { class: 'pill' + (b.status === 'violation' ? ' warn' : b.status === 'compliant' ? ' ok' : ''), text: b.status.replace('_', ' ') }))); });
+  renderBoxProps();
+}
+function renderBoxProps(){
+  const f = frame(); const b = f?.boxes.find(b => b.id === sel); const P = $('#boxProps'); P.hidden = !b; if (!b) return; P.innerHTML = '';
+  const c = cls(b.cls); const upd = (k, v) => { snapshot(); b[k] = v; if (k === 'worker_id') lastWorker = v; touched(); };
+  const F = (label, node, full) => el('div', { class: 'f' + (full ? ' full' : '') }, el('span', { class: 'lbl', text: label }), node);
+  P.append(
+    F('Class', selectEl(S.classes.map(x => [String(x.id), `${x.id} · ${x.name}`]), String(b.cls), v => pickClass(+v, true)), true),
+    F('Hazard', selectEl([['', 'None'], ...HAZARDS.map(([id, n]) => [id, `${id} ${n}`])], b.hazard, v => upd('hazard', v))),
+    F('Status', selectEl(STATUSES, b.status, v => upd('status', v))),
+    F('Worker / track ID', el('input', { type: 'text', value: b.worker_id, placeholder: 'e.g. W1', onchange: e => upd('worker_id', e.target.value.trim()) })),
+    F('Size (px)', el('input', { type: 'text', value: `${Math.round(b.w)} × ${Math.round(b.h)} @ ${Math.round(b.x)},${Math.round(b.y)}`, readonly: true, tabindex: -1 })),
+    el('div', { class: 'f full', style: 'flex-direction:row;gap:14px' },
+      el('label', { class: 'field' }, el('input', { type: 'checkbox', checked: b.occluded, onchange: e => upd('occluded', e.target.checked) }), 'Occluded'),
+      el('label', { class: 'field' }, el('input', { type: 'checkbox', checked: b.truncated, onchange: e => upd('truncated', e.target.checked) }), 'Cut off at edge')),
+    F('Note', el('input', { type: 'text', value: b.note, placeholder: 'Optional', onchange: e => upd('note', e.target.value) }), true),
+    el('div', { class: 'f full', style: 'flex-direction:row;gap:6px' },
+      el('button', { class: 'btn sm', text: 'Duplicate', onclick: dupBox }), el('button', { class: 'btn sm', text: 'Delete box', onclick: delBox })));
+}
+function pastePrev(){ const f = frame(); if (!f) return; const src = prevCaptured(f.clipId, f.t); if (!src) { toast('No earlier captured frame in this clip'); return; }
+  const iou = (a, b) => { const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y), x2 = Math.min(a.x + a.w, b.x + b.w), y2 = Math.min(a.y + a.h, b.y + b.h); const i = Math.max(0, x2 - x1) * Math.max(0, y2 - y1); return i / (a.w * a.h + b.w * b.h - i || 1); };
+  const add = copyBoxes(src.boxes).filter(n => !f.boxes.some(b => b.cls === n.cls && iou(b, n) > 0.85));
+  if (!add.length) { toast('Those boxes are already here'); return; }
+  snapshot(); f.boxes.push(...add); sel = null; touched(); toast(`Pasted ${add.length} boxes from f${src.frameIndex}`); }
+function confirmFrame(){ const f = frame(); if (!f) return; let n = 0; for (const b of f.boxes) if (b.carried) { delete b.carried; n++; } if (n) { f.updated_at = nowISO(); persist(); }
+  const ids = visibleFrames(); const i = ids.indexOf(f.id); if (i >= 0 && i < ids.length - 1) openFrame(ids[i + 1]); else { renderAll(); toast(n ? 'Boxes confirmed. This was the last frame in the list.' : 'This was the last frame in the list.'); } }
+let boxClip = null;
+function copySel(){ const f = frame(); const b = f?.boxes.find(x => x.id === sel); if (!b) { toast('Select a box first'); return; } boxClip = structuredClone(b); toast(`Copied ${cls(b.cls).name}. Ctrl+V pastes it on any frame.`); }
+function pasteClip(){ const f = frame(); if (!f || !boxClip) return; snapshot(); const n = { ...structuredClone(boxClip), id: uid(), created_at: nowISO(), annotator }; delete n.carried;
+  n.w = Math.min(n.w, f.width); n.h = Math.min(n.h, f.height); n.x = clamp(n.x, 0, f.width - n.w); n.y = clamp(n.y, 0, f.height - n.h); f.boxes.push(n); sel = n.id; touched(); }
+$('#btnPastePrev').onclick = pastePrev; $('#btnConfirm').onclick = confirmFrame;
+function dupBox(){ const f = frame(); const b = f?.boxes.find(b => b.id === sel); if (!b) return; snapshot(); const n = { ...b, id: uid(), x: clamp(b.x + 12, 0, f.width - b.w), y: clamp(b.y + 12, 0, f.height - b.h), created_at: nowISO() }; f.boxes.push(n); sel = n.id; touched(); }
+function delBox(){ const f = frame(); if (!f || !sel) return; snapshot(); f.boxes = f.boxes.filter(b => b.id !== sel); sel = null; touched(); }
+const autoHazards = f => [...new Set(f.boxes.filter(b => b.status === 'violation' && b.hazard).map(b => b.hazard))].sort();
+const frameHazards = f => [...new Set([...autoHazards(f), ...(f.meta.hazards_marked || [])])].sort();
+function autoScenario(f){ if (!f.boxes.length) return 'background'; if (f.boxes.some(b => b.status === 'violation')) return 'positive'; if (f.boxes.some(b => b.status === 'hard_negative')) return 'hard_negative'; return 'compliant_negative'; }
+const SCEN_LABEL = { background: 'Background (no boxes)', positive: 'Positive (has a violation)', hard_negative: 'Hard negative (look-alike, no violation)', compliant_negative: 'Compliant (rules followed)' };
+const effMeta = f => ({ ...f.meta, ...(S.clips[f.clipId]?.meta || {}) });
+function renderFrameMeta(){
+  const f = frame(); const on = S.mode === 'frame' && f; $('#frameSec').hidden = !on; if (!on) return; const P = $('#frameMeta'); P.innerHTML = ''; const m = f.meta; m.hazards_marked ||= [];
+  const upd = (k, v) => { m[k] = v; f.updated_at = nowISO(); renderFrames(); persist(); };
+  const F = (label, node, full) => el('div', { class: 'f' + (full ? ' full' : '') }, el('span', { class: 'lbl', text: label }), node);
+  const auto = autoHazards(f);
+  const hz = el('div', { class: 'chips' });
+  for (const [id, n] of HAZARDS) { const isAuto = auto.includes(id), isOn = isAuto || m.hazards_marked.includes(id);
+    hz.append(el('button', { class: 'chip' + (isOn ? ' on' : '') + (isAuto ? ' auto' : ''), title: isAuto ? `${n}. Set automatically from a violation box.` : `${n}. Click to add by hand.`, text: id,
+      onclick: () => { if (isAuto) { toast('This comes from a violation box. Change that box’s status to remove it.'); return; }
+        const s = new Set(m.hazards_marked); s.has(id) ? s.delete(id) : s.add(id); upd('hazards_marked', [...s].sort()); renderFrameMeta(); } })); }
+  const em = effMeta(f); const sc = autoScenario(f);
+  P.append(
+    F('Hazards (filled in from violation boxes)', hz, true),
+    F('Frame type (automatic)', el('div', { class: 'autoval' + (sc === 'positive' ? ' warn' : ''), text: SCEN_LABEL[sc] }), true),
+    F('QA review', selectEl(RSTAT, m.review_status, v => { upd('review_status', v); if (v !== 'pending' && !m.reviewer) { m.reviewer = annotator; renderFrameMeta(); } })),
+    F('Reviewer', el('input', { type: 'text', value: m.reviewer, placeholder: 'Set on review', onchange: e => upd('reviewer', e.target.value) })),
+    F('Notes (optional)', el('textarea', { rows: 1, placeholder: 'Anything a reviewer should know', oninput: e => upd('frame_notes', e.target.value) }, m.frame_notes || ''), true),
+    el('div', { class: 'empty full', style: 'grid-column:1/-1;font-family:var(--font-mono);font-size:10.5px', text: `${f.annotator} · ${em.restaurant_id} · view ${em.camera_view} · ${em.session_id} · split ${em.split}\nRestaurant, session, view and split come from the clip’s recording details.` }));
+}
+function renderClipMeta(){
+  const c = clip(); $('#clipMetaBox').hidden = !c; if (!c) return; const P = $('#clipMeta'); P.innerHTML = ''; const m = c.meta;
+  const upd = (k, v) => { m[k] = v; if (k === 'restaurant_id') lsSet('rads.rest', v); persist(); renderFrameMeta(); };
+  const F = (label, node, full) => el('div', { class: 'f' + (full ? ' full' : '') }, el('span', { class: 'lbl', text: label }), node);
+  const T = (k, ph) => el('input', { type: 'text', value: m[k], placeholder: ph, onchange: e => upd(k, slugSoft(e.target.value)) });
+  const more = el('details', { class: 'box', style: 'grid-column:1/-1;background:var(--panel)' }, el('summary', { text: 'More details (optional)' }),
+    el('div', { class: 'in grid2' },
+      F('Camera ID', T('camera_id', 'CAM1')), F('Scenario ID', T('scenario_id', 'e.g. H04-SC2')),
+      F('Recording date', el('input', { type: 'date', value: m.recording_date, onchange: e => upd('recording_date', e.target.value) }), true),
+      F('Zone', selectEl(ZONES, m.zone, v => upd('zone', v))), F('Lighting', selectEl(LIGHT, m.lighting, v => upd('lighting', v)))));
+  P.append(
+    F('Restaurant ID', T('restaurant_id', 'R01')), F('Session ID', T('session_id', 'S01')),
+    F('Camera view', selectEl(VIEWS, m.camera_view, v => upd('camera_view', v))),
+    F('Split', selectEl(SPLITS, m.split, v => upd('split', v))),
+    more,
+    el('div', { class: 'empty full', style: 'grid-column:1/-1', text: 'Set once per clip. Every frame from this clip uses these, including frames already captured.' }));
+}
+const slugSoft = s => String(s).trim().replace(/\s+/g, '-');
+function deleteClip(id){
+  const c = S.clips[id]; if (!c) return; const fids = S.order.filter(f => S.frames[f]?.clipId === id); const n = fids.length;
+  modal((m, close) => {
+    const go = withFrames => {
+      if (withFrames) { for (const fid of fids) { delete S.frames[fid]; idbDel('images', fid); delete runtime.imgs[fid]; delete runtime.blobs[fid]; }
+        S.order = S.order.filter(x => !fids.includes(x)); if (fids.includes(S.activeFrame)) S.activeFrame = null; }
+      if (runtime.urls[id]) URL.revokeObjectURL(runtime.urls[id]); delete runtime.urls[id]; delete runtime.files[id]; delete runtime.thumbs[id]; delete S.clips[id];
+      close();
+      if (S.activeClip === id) { S.activeClip = null; vid.pause(); vid.removeAttribute('src'); vid.dataset.clip = ''; vid.load(); const next = Object.keys(S.clips)[0]; if (next) { selectClip(next); toast(`Removed ${c.name}`); persist(); return; } }
+      setMode(frame() ? S.mode : 'video'); renderAll(); persist(); toast(`Removed ${c.name}${withFrames && n ? ` and ${n} frames` : ''}`);
+    };
+    m.append(el('h2', { text: `Remove ${c.name}?` }),
+      el('p', { text: n ? `This clip has ${n} captured frame${n > 1 ? 's' : ''}. You can keep them (they still export) or delete them too. Your video file on disk is not touched.` : 'It has no captured frames. Your video file on disk is not touched.' }),
+      el('div', { class: 'acts' }, el('button', { class: 'btn', text: 'Cancel', onclick: close }),
+        n ? el('button', { class: 'btn', text: `Remove clip, keep ${n} frame${n > 1 ? 's' : ''}`, onclick: () => go(false) }) : null,
+        el('button', { class: 'btn primary', text: n ? `Delete clip and ${n} frame${n > 1 ? 's' : ''}` : 'Remove clip', onclick: () => go(true) })));
+  });
+}
+function renderClips(){
+  const L = $('#clipList'); L.innerHTML = ''; const ids = Object.keys(S.clips); $('#clipCount').textContent = ids.length;
+  if (!ids.length) L.append(el('div', { class: 'empty', text: 'No clips yet. Import a video or drop it on the stage.' }));
+  for (const id of ids) { const c = S.clips[id]; const n = S.order.filter(f => S.frames[f]?.clipId === id).length; const has = !!runtime.urls[id];
+    L.append(el('div', { class: 'clip' + (id === S.activeClip ? ' active' : ''), onclick: () => selectClip(id) },
+      el('div', { class: 'cliprow' }, el('span', { class: 'nm', text: c.name }),
+        el('button', { class: 'btn sm icon', title: 'Remove this clip', 'aria-label': `Remove ${c.name}`, text: '✕', onclick: e => { e.stopPropagation(); deleteClip(id); } })),
+      el('span', { class: 'sub' + (has ? '' : ' miss'), text: has ? `${c.duration ? fmtShort(c.duration) : '…'} · ${c.fps} fps · ${n} frames · ${c.events.length} events` : `video not loaded · ${n} frames` }))); }
+}
+function renderFrames(){
+  const L = $('#frameList'); L.innerHTML = ''; const ids = visibleFrames(); $('#frameCount').textContent = S.order.length;
+  if (!ids.length) L.append(el('div', { class: 'empty', text: S.order.length ? 'No frames match this filter.' : 'Frames you capture appear here.' }));
+  for (const id of ids) { const f = S.frames[id]; const vio = f.boxes.filter(b => b.status === 'violation').length;
+    L.append(el('div', { class: 'fr' + (id === S.activeFrame && S.mode === 'frame' ? ' active' : ''), 'data-id': id, onclick: () => openFrame(id) },
+      el('img', { src: f.thumb, alt: '' }),
+      el('div', { class: 'meta' }, el('span', { class: 'id', text: `${fmtTC(f.t, f.fps)} · f${f.frameIndex}` }), el('span', { class: 'id', style: 'color:var(--muted)', text: f.clipName }),
+        el('div', { class: 'st' }, f.boxes.length ? el('span', { class: 'pill', text: `${f.boxes.length} box` }) : el('span', { class: 'pill', text: 'background' }), vio ? el('span', { class: 'pill warn', text: frameHazards(f).join(' ') || `${vio} viol.` }) : null,
+          f.boxes.some(b => b.carried) ? el('span', { class: 'pill warn', text: 'check' }) : null,
+          f.meta.review_status === 'approved' ? el('span', { class: 'pill acc', text: 'QA ✓' }) : f.meta.review_status === 'needs_fix' ? el('span', { class: 'pill warn', text: 'fix' }) : null)))); }
+}
+function renderSidePanels(){ renderBoxes(); renderFrameMeta(); renderFrames(); }
+function renderAll(){ renderClips(); renderClipMeta(); renderEvents(); renderClasses(); renderSidePanels(); renderStageInfo(); updateTC(); drawTL(); drawEd();
+  const c = clip(); $('#btnCapture').disabled = !(c && runtime.urls[c.id]); $('#drop').hidden = !!c || S.mode === 'frame'; }
+
+/* ---------------- classes editor ---------------- */
+$('#btnClasses').onclick = () => modal((m, close) => {
+  const used = new Set(Object.values(S.frames).flatMap(f => f.boxes.map(b => b.cls)));
+  const rows = el('div', { class: 'ctable' });
+  const draw = () => { rows.innerHTML = ''; for (const c of S.classes) rows.append(el('div', { class: 'crow' },
+    el('span', { class: 'id', text: c.id }), el('input', { type: 'color', value: c.color, 'aria-label': 'Colour', oninput: e => { c.color = e.target.value; } }),
+    el('input', { type: 'text', value: c.name, 'aria-label': 'Class name', onchange: e => { c.name = e.target.value.trim().replace(/\s+/g, '_') || c.name; } }),
+    el('input', { type: 'text', value: c.hz.join(','), placeholder: 'Hazards e.g. H-01', 'aria-label': 'Hazards', onchange: e => { c.hz = e.target.value.split(/[ ,]+/).map(s => s.trim().toUpperCase()).filter(s => /^H-0[1-8]$/.test(s)); } }))); };
+  draw();
+  const fmt = selectEl([['jpg','JPEG (95% quality)'],['png','PNG (lossless, larger)']], S.imageFormat, v => { S.imageFormat = v; persist(); });
+  m.append(el('h2', { text: 'Classes and image format' }),
+    el('p', { text: `IDs are the YOLO class numbers and must be the same for all three of you. Rename or recolour freely; new classes are added at the end so existing labels keep their numbers. ${used.size} classes are already used in your boxes.` }),
+    rows,
+    el('div', { class: 'field' }, el('label', { for: 'newCls', text: 'Add class' }), el('input', { type: 'text', id: 'newCls', placeholder: 'class_name' }),
+      el('button', { class: 'btn sm', text: 'Add', onclick: () => { const v = $('#newCls').value.trim().replace(/\s+/g, '_'); if (!v) return; if (S.classes.some(c => c.name === v)) { toast('That class already exists'); return; }
+        S.classes.push({ id: Math.max(-1, ...S.classes.map(c => c.id)) + 1, name: v, group: 'Custom', hz: [], def: 'context', color: '#' + Math.floor(Math.random() * 0xAAAAAA + 0x333333).toString(16).padStart(6, '0') }); $('#newCls').value = ''; draw(); } })),
+    el('div', { class: 'field' }, el('label', { text: 'Captured image format' }), fmt),
+    el('div', { class: 'acts' }, el('button', { class: 'btn primary', text: 'Done', onclick: () => { close(); renderClasses(); drawEd(); renderBoxes(); persist(); } })));
+});
+
+/* ---------------- export ---------------- */
+function yoloTxt(f){ return f.boxes.map(b => { const cx = (b.x + b.w / 2) / f.width, cy = (b.y + b.h / 2) / f.height; return `${b.cls} ${cx.toFixed(6)} ${cy.toFixed(6)} ${(b.w / f.width).toFixed(6)} ${(b.h / f.height).toFixed(6)}`; }).join('\n') + (f.boxes.length ? '\n' : ''); }
+function frameRecord(f){
+  const c = S.clips[f.clipId] || {}; const M = effMeta(f);
+  return { frame_id: f.id, image_raw: `frames/${f.id}/${f.id}_raw.${f.ext}`, image_annotated: `frames/${f.id}/${f.id}_annotated.jpg`, metadata_file: `frames/${f.id}/${f.id}_metadata.json`,
+    source: { clip_id: f.clipId, clip_file: f.clipName, clip_duration_sec: c.duration ? +c.duration.toFixed(3) : null, fps: f.fps, timestamp_sec: f.t, timecode: fmtTC(f.t, f.fps), frame_index: f.frameIndex },
+    image: { width: f.width, height: f.height, format: f.ext },
+    recording: { restaurant_id: M.restaurant_id, camera_view: M.camera_view, camera_view_label: (VIEWS.find(v => v[0] === M.camera_view) || [])[1] || M.camera_view, camera_id: M.camera_id, session_id: M.session_id, scenario_id: M.scenario_id, scenario_type: autoScenario(f), recording_date: M.recording_date },
+    context: { zone: M.zone, lighting: M.lighting, split: M.split, hazards_marked: frameHazards(f), hazards_from_boxes: [...new Set(f.boxes.filter(b => b.status === 'violation' && b.hazard).map(b => b.hazard))].sort(), is_background: f.boxes.length === 0,
+      events_overlapping: (c.events || []).filter(e => f.t >= e.start && f.t <= e.end).map(e => ({ event_id: e.id, hazard: e.hazard, worker_id: e.worker_id, status: e.status })) },
+    annotation: { annotator: f.annotator, last_edited_by: f.last_edited_by || f.annotator, captured_at: f.captured_at, updated_at: f.updated_at, review_status: M.review_status, reviewer: M.reviewer, notes: M.frame_notes },
+    boxes: f.boxes.map(b => { const k = cls(b.cls); return { box_id: b.id, class_id: b.cls, class_name: k.name, hazard: b.hazard || null, status: b.status, worker_id: b.worker_id || null, occluded: b.occluded, truncated: b.truncated, note: b.note,
+      bbox_xyxy_px: [Math.round(b.x), Math.round(b.y), Math.round(b.x + b.w), Math.round(b.y + b.h)], bbox_xywh_px: [Math.round(b.x), Math.round(b.y), Math.round(b.w), Math.round(b.h)],
+      bbox_yolo: [+((b.x + b.w / 2) / f.width).toFixed(6), +((b.y + b.h / 2) / f.height).toFixed(6), +(b.w / f.width).toFixed(6), +(b.h / f.height).toFixed(6)], annotator: b.annotator }; }) };
+}
+/* Per-frame metadata for training: a small fixed core plus optional groups the team can switch on later. */
+const META_GROUPS = [
+  ['grouping', 'Recording group', 'Restaurant, session, camera view and ID, clip file. The YOLO script uses restaurant + session to keep one recording out of both train and test. Keep on.', true],
+  ['split', 'Split', 'The train / val / test you chose for the clip. The YOLO script follows it when set. Keep on.', true],
+  ['source', 'Frame source', 'Frame number, time and FPS in the clip. Lets you trace a frame back to the video and spot near-duplicates.', true],
+  ['box_attrs', 'Box attributes', 'Hazard, status (violation, compliant…), worker ID, occluded, cut off for each box. YOLO ignores these; useful later for the rule engine or for filtering hard boxes.', false],
+  ['box_pixels', 'Pixel boxes', 'Box corners in pixels as well. Only needed if a tool wants pixels instead of YOLO 0–1 values.', false],
+  ['scenario', 'Scenario & scene', 'Frame type, hazards, scenario ID, zone, lighting, date. For checking class balance and reporting results per scene.', false],
+  ['qa', 'Annotation & QA', 'Reviewer, review result, notes, timestamps. For tracking the second-pass QA review.', false],
+  ['events', 'Event intervals', 'H-04 / H-05 / H-07 time intervals that cover this frame. For the temporal rule tests, not YOLO.', false],
+];
+const metaOn = k => (S.metaFields ?? {})[k] ?? META_GROUPS.find(g => g[0] === k)[3];
+function slimRecord(f){
+  const full = frameRecord(f);
+  const out = { frame_id: f.id, annotator: f.annotator, image: { raw: `${f.id}_raw.${f.ext}`, annotated: `${f.id}_annotated.jpg`, width: f.width, height: f.height } };
+  if (metaOn('split')) out.split = full.context.split;
+  if (metaOn('grouping')) out.group = { restaurant_id: full.recording.restaurant_id, session_id: full.recording.session_id, camera_view: full.recording.camera_view, camera_id: full.recording.camera_id, clip_file: full.source.clip_file };
+  if (metaOn('source')) out.source = { frame_index: full.source.frame_index, timestamp_sec: full.source.timestamp_sec, fps: full.source.fps };
+  if (metaOn('scenario')) out.scenario = { scenario_id: full.recording.scenario_id, scenario_type: full.recording.scenario_type, zone: full.context.zone, lighting: full.context.lighting, recording_date: full.recording.recording_date, hazards_marked: full.context.hazards_marked, hazards_from_boxes: full.context.hazards_from_boxes };
+  if (metaOn('qa')) out.annotation = full.annotation;
+  if (metaOn('events')) out.events = full.context.events_overlapping;
+  out.is_background = full.boxes.length === 0;
+  out.num_boxes = full.boxes.length;
+  out.boxes = full.boxes.map(b => { const o = { class_id: b.class_id, class_name: b.class_name, bbox_yolo: b.bbox_yolo };
+    if (metaOn('box_pixels')) o.bbox_xyxy_px = b.bbox_xyxy_px;
+    if (metaOn('box_attrs')) Object.assign(o, { hazard: b.hazard, status: b.status, worker_id: b.worker_id, occluded: b.occluded, truncated: b.truncated });
+    return o; });
+  return out;
+}
+const YOLO_SCRIPT = String.raw`#!/usr/bin/env python3
+"""Build an Ultralytics YOLO dataset (images/ + labels/ + data.yaml) from a RADS Annotator export.
+
+Every output file keeps the frame ID, and index.csv lists each frame's split, YOLO image,
+YOLO label, raw image and annotated image so any file can be traced back.
+
+Run it inside the unzipped export folder:
+    python make_yolo_dataset.py
+    python make_yolo_dataset.py --out my_yolo --val 0.15 --test 0.15
+    python make_yolo_dataset.py --src exportA --src exportB   (merge several team exports)
+
+Frames whose metadata has split = train / val / test keep it. The rest are split by
+restaurant + session (or by clip if that is missing), so frames from one recording never
+land in both train and test (SRS D-05). Only the Python standard library is needed.
+"""
+import argparse, csv, glob, hashlib, json, os, shutil
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--src", action="append", help="unzipped export folder (repeatable)")
+    ap.add_argument("--out", default="yolo_dataset")
+    ap.add_argument("--val", type=float, default=0.15)
+    ap.add_argument("--test", type=float, default=0.15)
+    a = ap.parse_args()
+    srcs = a.src or ["."]
+    names = [l.strip() for l in open(os.path.join(srcs[0], "classes.txt"), encoding="utf-8") if l.strip()]
+    counts = {"train": 0, "val": 0, "test": 0}
+    groups = {"train": set(), "val": set(), "test": set()}
+    index = []
+    for src in srcs:
+        metas = sorted(glob.glob(os.path.join(src, "frames", "*", "*_metadata.json")))
+        if not metas:
+            print("No frames/*/*_metadata.json in", os.path.abspath(src))
+        for path in metas:
+            m = json.load(open(path, encoding="utf-8"))
+            g = m.get("group") or {}
+            key = "|".join(str(g.get(k, "")) for k in ("restaurant_id", "session_id")) if g else m["frame_id"].rsplit("_f", 1)[0]
+            split = m.get("split")
+            if split not in counts:
+                r = int(hashlib.md5(key.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+                split = "test" if r < a.test else "val" if r < a.test + a.val else "train"
+            folder = os.path.dirname(path)
+            img_dir = os.path.join(a.out, "images", split)
+            lbl_dir = os.path.join(a.out, "labels", split)
+            os.makedirs(img_dir, exist_ok=True)
+            os.makedirs(lbl_dir, exist_ok=True)
+            raw = m["image"]["raw"]
+            yolo_img = os.path.join(img_dir, m["frame_id"] + os.path.splitext(raw)[1])
+            shutil.copy2(os.path.join(folder, raw), yolo_img)
+            index.append([m["frame_id"], split, key, len(m["boxes"]), os.path.relpath(yolo_img, a.out), os.path.join("labels", split, m["frame_id"] + ".txt"),
+                          os.path.abspath(os.path.join(folder, raw)), os.path.abspath(os.path.join(folder, m["image"]["annotated"]))])
+            with open(os.path.join(lbl_dir, m["frame_id"] + ".txt"), "w") as f:
+                for b in m["boxes"]:
+                    f.write("%d %s\n" % (b["class_id"], " ".join("%.6f" % v for v in b["bbox_yolo"])))
+            counts[split] += 1
+            groups[split].add(key)
+    with open(os.path.join(a.out, "data.yaml"), "w", encoding="utf-8") as f:
+        f.write("path: %s\ntrain: images/train\nval: images/val\ntest: images/test\nnames:\n" % os.path.abspath(a.out))
+        for i, n in enumerate(names):
+            f.write("  %d: %s\n" % (i, n))
+    with open(os.path.join(a.out, "index.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["frame_id", "split", "recording_group", "num_boxes", "yolo_image", "yolo_label", "raw_image", "annotated_image"])
+        w.writerows(index)
+    for s in counts:
+        print("%-5s %5d images from %d recording group(s)" % (s, counts[s], len(groups[s])))
+    if not counts["val"] or not counts["test"]:
+        print("Note: val or test is empty. With few sessions, set Split per clip in the tool instead.")
+    print("Wrote", os.path.abspath(a.out))
+
+if __name__ == "__main__":
+    main()
+`;
+async function renderAnnotated(f){
+  const img = await getImage(f.id); const W = f.width, H = f.height; const band = Math.max(22, Math.round(H * 0.035));
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H + band; const ctx = cv.getContext('2d');
+  if (img) ctx.drawImage(img, 0, 0, W, H); const lw = Math.max(2, Math.round(W / 600)); const fs = Math.max(12, Math.round(W / 85));
+  ctx.font = `600 ${fs}px "JetBrains Mono", ui-monospace, monospace`; ctx.textBaseline = 'top';
+  for (const b of f.boxes) { const c = cls(b.cls); ctx.strokeStyle = c.color; ctx.lineWidth = lw; ctx.setLineDash(b.status === 'hard_negative' ? [lw * 4, lw * 3] : []); ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.setLineDash([]);
+    const t = boxLabel(b).replace(' ⚠', ' [VIOLATION]'); const tw = ctx.measureText(t).width + fs * .6; const th = fs * 1.35; const ly = b.y - th < 0 ? b.y : b.y - th;
+    ctx.fillStyle = c.color; ctx.fillRect(b.x - lw / 2, ly, tw, th); ctx.fillStyle = contrastInk(c.color); ctx.fillText(t, b.x + fs * .3, ly + fs * .18); }
+  ctx.fillStyle = '#111'; ctx.fillRect(0, H, W, band); ctx.fillStyle = '#eee'; ctx.font = `500 ${Math.round(band * .5)}px "JetBrains Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
+  const hz = frameHazards(f);
+  ctx.fillText(`${f.id}  |  ${fmtTC(f.t, f.fps)}  |  ${f.boxes.length} boxes${hz.length ? '  |  ' + hz.join(' ') : ''}  |  ${f.annotator}`, band * .4, H + band / 2);
+  return new Promise(r => cv.toBlob(b => { cv.width = 0; cv.height = 0; r(b); }, 'image/jpeg', 0.92));
+}
+const csvCell = v => { const s = Array.isArray(v) ? v.join(';') : (v ?? '') + ''; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const toCSV = (head, rows) => [head.join(','), ...rows.map(r => r.map(csvCell).join(','))].join('\n') + '\n';
+$('#btnExport').onclick = () => {
+  if (!S.order.length) { toast('Capture at least one frame before exporting'); return; }
+  const clipsWithFrames = [...new Set(S.order.map(id => S.frames[id].clipId))];
+  modal((m, close) => {
+    const scope = selectEl([['all', `All frames (${S.order.length})`], ['clip', `This clip only (${S.order.filter(id => S.frames[id].clipId === S.activeClip).length})`], ['approved', `QA-approved only (${S.order.filter(id => S.frames[id].meta.review_status === 'approved').length})`]], 'all', () => {}, { id: 'expScope' });
+    const prog = el('div', { class: 'prog' }, el('i')); const status = el('p', { text: '' });
+    S.metaFields ||= {};
+    const fields = el('details', { class: 'box' }, el('summary', { text: 'Metadata fields (frame ID, image size and YOLO boxes are always included)' }),
+      el('div', { class: 'in', style: 'display:flex;flex-direction:column;gap:6px' },
+        ...META_GROUPS.map(([k, label, desc]) => el('label', { class: 'field', style: 'align-items:flex-start;gap:8px' },
+          el('input', { type: 'checkbox', id: 'mf_' + k, checked: metaOn(k), onchange: e => { S.metaFields[k] = e.target.checked; persist(); } }),
+          el('span', {}, el('b', { text: label }), el('span', { class: 'empty', text: ' — ' + desc })))),
+        el('label', { class: 'field', style: 'align-items:flex-start;gap:8px;margin-top:4px' },
+          el('input', { type: 'checkbox', id: 'mf_extra', checked: !!S.exportExtras, onchange: e => { S.exportExtras = e.target.checked; persist(); } }),
+          el('span', {}, el('b', { text: 'Extra files' }), el('span', { class: 'empty', text: ' — COCO JSON (for Roboflow, CVAT) plus frames.csv and boxes.csv to check counts in Excel.' })))));
+    m.append(el('h2', { text: 'Export dataset' }),
+      el('p', { text: 'Each frame gets its own folder holding the raw image, the annotated image and its metadata JSON. A script in the ZIP turns those folders into a YOLO train/val/test dataset.' }),
+      (() => { const n = S.order.filter(id => S.frames[id].boxes.some(b => b.carried)).length; return n ? el('p', { style: 'color:var(--warn)', text: `${n} frame${n > 1 ? 's still have' : ' still has'} copied boxes you have not confirmed (filter: Copied boxes to check). They export as they are.` }) : null; })(),
+      el('div', { class: 'field' }, el('label', { for: 'expScope', text: 'Include' }), scope), fields, prog, status,
+      el('div', { class: 'acts' }, el('button', { class: 'btn', text: 'Cancel', onclick: close }), el('button', { class: 'btn primary', id: 'expGo', text: 'Build ZIP', onclick: async () => {
+        $('#expGo').disabled = true; try { await doExport(scope.value, (i, n) => { prog.firstChild.style.width = (100 * i / n) + '%'; status.textContent = `Rendering ${i} of ${n}…`; }); close(); }
+        catch (e) { status.textContent = 'Export failed: ' + (e && e.message || e); $('#expGo').disabled = false; } } })));
+  });
+};
+/* Large exports are split into ZIPs of EXPORT_PART frames, built one after another, so memory never fills up. */
+const EXPORT_PART = 100;
+async function doExport(scope, onProg){
+  if (typeof JSZip === 'undefined') throw new Error('The ZIP library did not load. Check your connection and reload.');
+  const all = S.order.filter(id => { const f = S.frames[id]; return scope === 'clip' ? f.clipId === S.activeClip : scope === 'approved' ? f.meta.review_status === 'approved' : true; });
+  if (!all.length) throw new Error('No frames match that choice.');
+  const n = Math.ceil(all.length / EXPORT_PART); const stamp = nowISO().slice(0, 16).replace(/[:T]/g, '-');
+  for (let k = 0; k < n; k++) {
+    const ok = await exportPart(all.slice(k * EXPORT_PART, (k + 1) * EXPORT_PART), k + 1, n, stamp, (i) => onProg(k * EXPORT_PART + i, all.length));
+    if (!ok) throw new Error(`Stopped at part ${k + 1} of ${n}. Parts already saved are complete; export again to get the rest.`);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  S.sinceExport = 0; persist();
+}
+async function exportPart(ids, partNo, partCount, stamp, onProg){
+  const zip = new JSZip(); const records = [];
+  for (let i = 0; i < ids.length; i++) { const f = S.frames[ids[i]]; onProg(i + 1);
+    let raw = runtime.blobs[f.id] || await idbGet('images', f.id); if (!raw) continue;
+    const dir = `frames/${f.id}/`;
+    zip.file(`${dir}${f.id}_raw.${f.ext}`, raw); zip.file(`${dir}${f.id}_annotated.jpg`, await renderAnnotated(f));
+    zip.file(`${dir}${f.id}_metadata.json`, JSON.stringify(slimRecord(f), null, 2)); records.push(frameRecord(f)); }
+  const clipIds = [...new Set(ids.map(id => S.frames[id].clipId))]; const clips = clipIds.map(id => S.clips[id]).filter(Boolean).map(c => ({ clip_id: c.id, file: c.name, size_bytes: c.size, duration_sec: c.duration, width: c.width, height: c.height, fps: c.fps, ...c.meta, added_by: c.added_by, events: c.events }));
+  const events = clips.flatMap(c => c.events.map(e => ({ ...e, clip_id: c.clip_id, clip_file: c.file, restaurant_id: c.restaurant_id, session_id: c.session_id, camera_view: c.camera_view })));
+  const exportedAt = nowISO();
+  zip.file('annotations.json', JSON.stringify({ tool: 'RADS Annotator', schema_version: 2, exported_at: exportedAt, exported_by: annotator, metadata_fields: Object.fromEntries(META_GROUPS.map(g => [g[0], metaOn(g[0])])), classes: S.classes.map(c => ({ id: c.id, name: c.name, hazards: c.hz, group: c.group, color: c.color, default_status: c.def })), hazards: HAZARDS.map(([id, name]) => ({ id, name })), clips, frames: records }, null, 2));
+  if (S.exportExtras) {
+  // COCO
+  const coco = { info: { description: 'RADS restaurant CCTV dataset', version: exportedAt, contributor: annotator, date_created: exportedAt }, licenses: [], categories: S.classes.map(c => ({ id: c.id + 1, name: c.name, supercategory: c.group, yolo_id: c.id })), images: [], annotations: [] };
+  let aid = 1; records.forEach((r, i) => { coco.images.push({ id: i + 1, file_name: r.image_raw.split('/').pop(), width: r.image.width, height: r.image.height, frame_id: r.frame_id, clip_file: r.source.clip_file, timestamp_sec: r.source.timestamp_sec });
+    for (const b of r.boxes) coco.annotations.push({ id: aid++, image_id: i + 1, category_id: b.class_id + 1, bbox: b.bbox_xywh_px, area: b.bbox_xywh_px[2] * b.bbox_xywh_px[3], iscrowd: 0, attributes: { hazard: b.hazard, status: b.status, worker_id: b.worker_id, occluded: b.occluded, truncated: b.truncated } }); });
+  zip.file('coco_annotations.json', JSON.stringify(coco));
+  zip.file('frames.csv', toCSV(['frame_id','clip_file','timestamp_sec','timecode','frame_index','fps','width','height','restaurant_id','camera_view','camera_id','session_id','scenario_id','scenario_type','recording_date','zone','lighting','split','hazards_marked','hazards_from_boxes','num_boxes','num_violation_boxes','annotator','frame_type','review_status','reviewer','captured_at','updated_at','notes'],
+    records.map(r => [r.frame_id, r.source.clip_file, r.source.timestamp_sec, r.source.timecode, r.source.frame_index, r.source.fps, r.image.width, r.image.height, r.recording.restaurant_id, r.recording.camera_view, r.recording.camera_id, r.recording.session_id, r.recording.scenario_id, r.recording.scenario_type, r.recording.recording_date, r.context.zone, r.context.lighting, r.context.split, r.context.hazards_marked, r.context.hazards_from_boxes, r.boxes.length, r.boxes.filter(b => b.status === 'violation').length, r.annotation.annotator, r.recording.scenario_type, r.annotation.review_status, r.annotation.reviewer, r.annotation.captured_at, r.annotation.updated_at, r.annotation.notes])));
+  zip.file('boxes.csv', toCSV(['frame_id','box_id','class_id','class_name','hazard','status','worker_id','x_min','y_min','x_max','y_max','occluded','truncated','note'], records.flatMap(r => r.boxes.map(b => [r.frame_id, b.box_id, b.class_id, b.class_name, b.hazard, b.status, b.worker_id, ...b.bbox_xyxy_px, b.occluded, b.truncated, b.note]))));
+  }
+  if (events.length) zip.file('events.csv', toCSV(['event_id','clip_file','restaurant_id','session_id','camera_view','hazard','worker_id','status','start_sec','end_sec','start_frame','end_frame','duration_sec','annotator','created_at'], events.map(e => [e.id, e.clip_file, e.restaurant_id, e.session_id, e.camera_view, e.hazard, e.worker_id, e.status, e.start, e.end, e.start_frame, e.end_frame, +(e.end - e.start).toFixed(3), e.annotator, e.created_at])));
+  zip.file('classes.txt', S.classes.slice().sort((x, y) => x.id - y.id).map(c => c.name).join('\n') + '\n');
+  zip.file('make_yolo_dataset.py', YOLO_SCRIPT);
+  const on = META_GROUPS.filter(g => metaOn(g[0])).map(g => g[1]).join(', ');
+  zip.file('README.txt', `RADS dataset export\nExported ${exportedAt} by ${annotator} with RADS Annotator. ${ids.length} frames.\n\nframes/<frame_id>/                 one folder per captured frame\n  <frame_id>_raw.${S.imageFormat === 'png' ? 'png' : 'jpg'}             the frame exactly as captured from the video, no drawing\n  <frame_id>_annotated.jpg         the same frame with boxes, labels and an info strip, for review\n  <frame_id>_metadata.json         image size + boxes (class_id, class_name, bbox_yolo = cx cy w h, normalised 0-1)\n                                   plus: ${on || 'nothing else'}\n                                   is_background = true means no boxes (a negative image)\n\nmake_yolo_dataset.py   run: python make_yolo_dataset.py  -> yolo_dataset/ with images/, labels/ (train/val/test) and data.yaml\nclasses.txt            class names in YOLO id order (ids must stay identical across team exports)\n${events.length ? 'events.csv             event intervals (H-04 / H-05 / H-07) with start/end time and frame\n' : ''}annotations.json       full record of everything; RADS Annotator uses it to reopen this ZIP (Open dataset ZIP)\n${S.exportExtras ? 'coco_annotations.json, frames.csv, boxes.csv   extra formats\n' : ''}\nFrame ID = restaurant_cameraview_session_clip_fFRAMENUMBER\nCamera views: A high diagonal, B distant diagonal, C medium task.\n`);
+  onProg(ids.length);
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE', streamFiles: true });
+  const who = annotator.split(' ')[0].toLowerCase();
+  return await saveFile(`RADS_${who}_${stamp}_${partCount > 1 ? `part${partNo}of${partCount}_` : ''}${ids.length}frames.zip`, blob);
+}
+
+/* ---------------- import a dataset zip (merge) ---------------- */
+async function importZip(file){
+  if (typeof JSZip === 'undefined') { toast('The ZIP library did not load. Reload the page.'); return; }
+  let zip; try { zip = await JSZip.loadAsync(file); } catch { toast('That file is not a readable ZIP'); return; }
+  const aj = zip.file('annotations.json'); if (!aj) { toast('No annotations.json in this ZIP. Was it exported by RADS Annotator?', 4000); return; }
+  let data; try { data = JSON.parse(await aj.async('string')); } catch { toast('annotations.json could not be read'); return; }
+  const map = {}; for (const c of data.classes || []) { let local = S.classes.find(x => x.name === (CLASS_ALIAS[c.name] || c.name)); if (!local) { local = { id: Math.max(-1, ...S.classes.map(x => x.id)) + 1, name: c.name, group: c.group || 'Custom', hz: c.hazards || [], def: c.default_status || 'context', color: c.color || '#999999' }; S.classes.push(local); } map[c.id] = local.id; }
+  for (const c of data.clips || []) { if (!S.clips[c.clip_id]) { const { clip_id, file, size_bytes, duration_sec, width, height, fps, events, added_by, ...meta } = c; S.clips[clip_id] = { id: clip_id, name: file, size: size_bytes, duration: duration_sec || 0, width, height, fps: fps || 25, meta: { ...defaultClipMeta(), ...meta }, events: events || [], added_by }; }
+    else { const L = S.clips[c.clip_id]; for (const e of c.events || []) if (!L.events.some(x => x.id === e.id)) L.events.push(e); L.events.sort((a, b) => a.start - b.start); } }
+  let added = 0, updated = 0, skipped = 0;
+  for (const r of data.frames || []) {
+    const ex = S.frames[r.frame_id]; if (ex && ex.updated_at >= r.annotation.updated_at) { skipped++; continue; }
+    const imgF = zip.file(r.image_raw); if (!imgF) { skipped++; continue; }
+    const blob = new Blob([await imgF.async('arraybuffer')], { type: r.image.format === 'png' ? 'image/png' : 'image/jpeg' });
+    const bmp = await createImageBitmap(blob).catch(() => null); let thumb = '';
+    if (bmp) { const t = document.createElement('canvas'); t.width = 160; t.height = Math.round(160 * r.image.height / r.image.width); t.getContext('2d').drawImage(bmp, 0, 0, t.width, t.height); thumb = t.toDataURL('image/jpeg', 0.7); bmp.close(); }
+    S.frames[r.frame_id] = { id: r.frame_id, clipId: r.source.clip_id, clipName: r.source.clip_file, t: r.source.timestamp_sec, frameIndex: r.source.frame_index, fps: r.source.fps, width: r.image.width, height: r.image.height, ext: r.image.format, thumb,
+      captured_at: r.annotation.captured_at, updated_at: r.annotation.updated_at, annotator: r.annotation.annotator, last_edited_by: r.annotation.last_edited_by,
+      boxes: r.boxes.map(b => ({ id: b.box_id, cls: map[b.class_id] ?? b.class_id, x: b.bbox_xywh_px[0], y: b.bbox_xywh_px[1], w: b.bbox_xywh_px[2], h: b.bbox_xywh_px[3], hazard: b.hazard || '', status: b.status, worker_id: b.worker_id || '', occluded: !!b.occluded, truncated: !!b.truncated, note: b.note || '', annotator: b.annotator })),
+      meta: { ...r.recording, zone: r.context.zone, lighting: r.context.lighting, split: r.context.split, hazards_marked: (r.context.hazards_marked || []).filter(h => !(r.context.hazards_from_boxes || []).includes(h)), frame_status: r.annotation.frame_status, review_status: r.annotation.review_status, reviewer: r.annotation.reviewer || '', frame_notes: r.annotation.notes || '' } };
+    runtime.blobs[r.frame_id] = blob; idbPut('images', r.frame_id, blob); if (!S.order.includes(r.frame_id)) S.order.push(r.frame_id); ex ? updated++ : added++;
+  }
+  S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
+  if (!S.activeClip && Object.keys(S.clips).length) S.activeClip = Object.keys(S.clips)[0];
+  setMode(S.mode); renderAll(); persist(); toast(`Opened ${file.name}: ${added} new, ${updated} updated, ${skipped} unchanged. Exported by ${data.exported_by || 'unknown'}.`, 5000);
+}
+
+/* ---------------- wiring ---------------- */
+$('#btnImportVideo').onclick = $('#btnImportVideo2').onclick = () => $('#fileVideo').click();
+$('#fileVideo').onchange = e => { importVideos([...e.target.files]); e.target.value = ''; };
+$('#btnImportZip').onclick = () => $('#fileZip').click();
+$('#fileZip').onchange = e => { const f = e.target.files[0]; if (f) importZip(f); e.target.value = ''; };
+const stage = $('#stage');
+['dragenter','dragover'].forEach(t => stage.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('hot'); }));
+['dragleave','drop'].forEach(t => stage.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.remove('hot'); }));
+stage.addEventListener('drop', e => { const fs = [...(e.dataTransfer?.files || [])]; const z = fs.find(f => /\.zip$/i.test(f.name)); if (z) importZip(z); const v = fs.filter(f => !/\.zip$/i.test(f.name)); if (v.length) importVideos(v); });
+$('#annotator').onchange = e => { if (e.target.value === 'other') { modal((m, close) => { const i = el('input', { type: 'text', id: 'otherName', placeholder: 'Your name' }); m.append(el('h2', { text: 'Who is annotating?' }), i, el('div', { class: 'acts' }, el('button', { class: 'btn primary', text: 'Save', onclick: () => { const v = i.value.trim(); if (v) { const o = el('option', { text: v, value: v }); e.target.insertBefore(o, e.target.lastElementChild); e.target.value = v; annotator = v; lsSet('rads.annotator', v); } else e.target.value = annotator; close(); } }))); setTimeout(() => i.focus(), 0); }); return; }
+  annotator = e.target.value; lsSet('rads.annotator', annotator); };
+
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase(); if (['input','select','textarea'].includes(tag) || $('#modalRoot').children.length) { if (e.key === 'Escape') $('#modalRoot').innerHTML = ''; return; }
+  const k = e.key, mod = e.ctrlKey || e.metaKey; const inFrame = S.mode === 'frame' && frame();
+  if (mod && k.toLowerCase() === 'z') { e.preventDefault(); undo(e.shiftKey); return; }
+  if (mod && k.toLowerCase() === 'y') { e.preventDefault(); undo(true); return; }
+  if (mod && k.toLowerCase() === 'd') { e.preventDefault(); if (inFrame) dupBox(); return; }
+  if (mod && k.toLowerCase() === 'c' && inFrame) { e.preventDefault(); copySel(); return; }
+  if (mod && k.toLowerCase() === 'v' && inFrame) { e.preventDefault(); pasteClip(); return; }
+  if (mod) return;
+  if (k === ' ') { e.preventDefault(); if (inFrame) { spaceDown = true; ed.style.cursor = 'grab'; } else $('#tPlay').click(); return; }
+  if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); const dir = k === 'ArrowLeft' ? -1 : 1;
+    if (inFrame && sel) { const f = frame(), b = f.boxes.find(b => b.id === sel); const d = e.shiftKey ? 10 : 1; snapshot(); b.x = clamp(b.x + dir * d, 0, f.width - b.w); touched(); return; }
+    setMode('video'); e.shiftKey ? seek(vid.currentTime + dir) : step(dir); return; }
+  if ((k === 'ArrowUp' || k === 'ArrowDown') && inFrame && sel) { e.preventDefault(); const f = frame(), b = f.boxes.find(b => b.id === sel); const d = (e.shiftKey ? 10 : 1) * (k === 'ArrowUp' ? -1 : 1); snapshot(); b.y = clamp(b.y + d, 0, f.height - b.h); touched(); return; }
+  const lk = k.toLowerCase();
+  if (lk === 'c') { capture(); return; }
+  if (lk === 'p' && inFrame) { pastePrev(); return; }
+  if (k === 'Enter' && inFrame) { e.preventDefault(); confirmFrame(); return; }
+  if (lk === 'i') { setMode('video'); markIn(); return; } if (lk === 'o') { setMode('video'); markOut(); return; }
+  if (lk === 'b') { setTool('draw'); return; } if (lk === 'v') { setTool('select'); return; }
+  if (lk === 'f') { fitImage(); return; } if (lk === 'h') { $('#btnLabels').click(); return; } if (lk === 'g') { $('#btnFocus').click(); return; }
+  if (k === '[') { navFrame(-1); return; } if (k === ']') { navFrame(1); return; }
+  if ((k === 'Delete' || k === 'Backspace') && inFrame) { e.preventDefault(); delBox(); return; }
+  if (k === 'Escape') { if (drag) { drag = null; drawEd(); return; } if (sel) { sel = null; renderBoxes(); drawEd(); return; } if (inFrame) setMode('video'); return; }
+  if (/^[1-9]$/.test(k)) { const id = runtime.keyClasses?.[+k - 1]; if (id != null) pickClass(id); }
+});
+document.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; ed.style.cursor = ''; } });
+window.addEventListener('beforeunload', () => { idbPut('kv', 'state', JSON.parse(JSON.stringify(S))); });
+
+/* ---------------- boot ---------------- */
+(async () => {
+  const saved = lsGet('rads.annotator'); if (saved) { const sel = $('#annotator'); if (![...sel.options].some(o => o.value === saved)) sel.insertBefore(el('option', { text: saved, value: saved }), sel.lastElementChild); sel.value = saved; annotator = saved; }
+  $('#btnLabels').classList.toggle('on', S.showLabels);
+  try { navigator.storage?.persist?.(); } catch {}
+  idb = await openDB();
+  const st = await idbGet('kv', 'state');
+  if (st && st.version === 1) { Object.assign(S, st); S.mode = 'video'; if (S.activeClip && !S.clips[S.activeClip]) S.activeClip = null; S.classSet = st.classSet; migrateClasses(); }
+  setMode('video'); renderAll();
+  if (S.order.length) toast(`Restored ${S.order.length} captured frames from this browser. Re-import videos to keep scrubbing.`, 4200);
+})();
+})();
+</script>
+</body></html>
