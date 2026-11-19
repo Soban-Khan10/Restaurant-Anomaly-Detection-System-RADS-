@@ -203,7 +203,8 @@ details.box>.in{padding:4px 8px 8px}
         <h3>Captured frames <span class="count" id="frameCount">0</span><span class="sp"></span>
           <select id="frameFilter" style="height:24px;font-size:11px">
             <option value="all">All clips</option><option value="clip">This clip</option><option value="violation">Has violations</option><option value="background">Background only</option><option value="review">Needs review</option><option value="check">Copied boxes to check</option>
-          </select></h3>
+          </select>
+          <button class="btn sm" id="btnDelAll" style="color:var(--warn)" title="Delete all captured frames from this browser">Delete all</button></h3>
         <div id="frameList" class="frames"></div>
       </section>
     </aside>
@@ -694,6 +695,26 @@ $('#btnDelFrame').onclick = async () => { const f = frame(); if (!f) return;
   const ids = visibleFrames(); const i = ids.indexOf(f.id); delete S.frames[f.id]; S.order = S.order.filter(x => x !== f.id); idbDel('images', f.id); delete runtime.imgs[f.id]; delete runtime.blobs[f.id];
   const next = ids[i + 1] || ids[i - 1]; S.activeFrame = null; if (next && S.frames[next]) openFrame(next); else { setMode('video'); renderAll(); } persist(); };
 $('#frameFilter').onchange = renderFrames;
+/* Delete every captured frame (clips stay). Needs the word "delete" typed, so it cannot happen by accident. */
+$('#btnDelAll').onclick = () => {
+  const n = S.order.length; if (!n) { toast('There are no captured frames to delete'); return; }
+  modal((m, close) => {
+    const inp = el('input', { type: 'text', id: 'delAllConfirm', placeholder: 'type delete', autocomplete: 'off' });
+    const go = el('button', { class: 'btn primary', text: `Delete all ${n} frames`, disabled: true, onclick: async () => {
+      go.disabled = true;
+      for (const id of S.order) { idbDel('images', id); releaseImg(runtime.imgs[id]); }
+      S.frames = {}; S.order = []; S.activeFrame = null; sel = null;
+      runtime.imgs = {}; runtime.blobs = {}; runtime.undo = {}; runtime.redo = {}; imgOrder.length = 0;
+      close(); setMode('video'); renderAll(); persist(); toast(`Deleted ${n} frames. Clips and their recording details are kept.`);
+    } });
+    inp.oninput = () => { go.disabled = inp.value.trim().toLowerCase() !== 'delete'; };
+    m.append(el('h2', { text: `Delete all ${n} captured frames?` }),
+      el('p', { text: 'Every captured frame and its boxes will be removed from this browser. This cannot be undone. Export a ZIP first if you still need them. Your clips, video files and exported ZIPs are not affected.' }),
+      el('div', { class: 'field' }, el('label', { for: 'delAllConfirm', text: 'Type delete to confirm' }), inp),
+      el('div', { class: 'acts' }, el('button', { class: 'btn', text: 'Cancel', onclick: close }), go));
+    setTimeout(() => inp.focus(), 0);
+  });
+};
 
 /* ---------------- annotation editor ---------------- */
 const ed = $('#ed'); const ectx = ed.getContext('2d');
