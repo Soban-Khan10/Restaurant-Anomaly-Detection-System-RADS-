@@ -1,0 +1,3 @@
+when,largest_class,largest_boxes,smallest_class,smallest_boxes,imbalance_ratio
+before (original train),rte_food,2866,raw_meat,95,30.17
+after (final train),rte_food,4082,raw_meat,285,14.32

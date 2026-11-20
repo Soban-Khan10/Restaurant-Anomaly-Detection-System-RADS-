@@ -1,0 +1,5 @@
+id,class,train_frames_with_class,frames_that_received_copies,copies_made_from_them,augmented_images_still_containing_class
+10,raw_meat,94,94,188,188
+11,smoking,179,179,358,358
+12,phone,303,303,355,355
+14,bin_open,133,133,266,266

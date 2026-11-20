@@ -1,0 +1,11 @@
+item,value
+augmented images,1063
+  from group A frames (2 copies each),812
+  from group B frames (1 copy each),251
+source frames used,657
+boxes in augmented images,9588
+boxes expected if nothing was lost,9642
+boxes lost to the edge (min_visibility 0.6),54
+images that needed at least one retry,9
+retries used in total,13
+images where a rare box was still lost after 5 retries,0

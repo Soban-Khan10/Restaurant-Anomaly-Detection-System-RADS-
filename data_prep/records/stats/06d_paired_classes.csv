@@ -1,0 +1,6 @@
+pair (yes / no),before_yes,before_no,before_yes_%,before_no_%,before_ratio (larger:smaller),after_yes,after_no,after_yes_%,after_no_%,after_ratio (larger:smaller)
+head_covered / head_uncovered,706,1368,34.0,66.0,1.94,1249,2247,35.7,64.3,1.8
+mask_on / mask_off,729,848,46.2,53.8,1.16,1116,1510,42.5,57.5,1.35
+apron / no_apron,587,829,41.5,58.5,1.41,1028,1362,43.0,57.0,1.32
+hand_gloved / hand_bare,1108,1562,41.5,58.5,1.41,1664,2855,36.8,63.2,1.72
+bin_closed / bin_open,885,134,86.8,13.2,6.6,1343,402,77.0,23.0,3.34

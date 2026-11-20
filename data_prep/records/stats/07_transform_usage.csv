@@ -1,0 +1,9 @@
+transform,images_applied,share_%
+HorizontalFlip,530,49.9
+Affine,767,72.2
+RandomBrightnessContrast,658,61.9
+HueSaturationValue,416,39.1
+RandomGamma,311,29.3
+ImageCompression,339,31.9
+GaussNoise,258,24.3
+MotionBlur,153,14.4

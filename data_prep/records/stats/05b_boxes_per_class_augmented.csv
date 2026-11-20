@@ -1,0 +1,17 @@
+id,class,expected_boxes,boxes_in_augmented,boxes_lost,augmented_images_containing
+0,person,1450,1446,4,1042
+1,head_covered,543,543,0,540
+2,head_uncovered,883,879,4,851
+3,mask_on,387,387,0,381
+4,mask_off,665,662,3,662
+5,apron,443,441,2,416
+6,no_apron,539,533,6,529
+7,hand_bare,1303,1293,10,706
+8,hand_gloved,575,556,19,362
+9,rte_food,1222,1216,6,684
+10,raw_meat,190,190,0,188
+11,smoking,360,360,0,358
+12,phone,356,356,0,355
+13,bin_closed,458,458,0,456
+14,bin_open,268,268,0,266
+,total,9642,9588,54,

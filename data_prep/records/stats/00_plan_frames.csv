@@ -1,0 +1,658 @@
+frame_id,group,copies,trigger_classes
+R01_A_S01_20261106233714023_f000134,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S01_20261106233714023_f000150,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S01_20261106233714023_f000246,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S01_20261109215618452-H264_f002339,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002345,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002372,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002422,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002493,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002566,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002593,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002651,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002785,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002810,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f002859,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003069,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003180,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003203,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003229,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003289,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003352,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003866,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003898,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003938,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f003962,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004005,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004072,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004129,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004156,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004178,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004196,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004390,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004582,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004670,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004730,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f004817,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f004842,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005327,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005417,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005482,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005840,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005903,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f005951,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f006063,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f006221,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f006295,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f006725,B (phone only),1,phone
+R01_A_S01_20261109215618452-H264_f007148,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007330,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007517,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007712,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007779,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007828,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f007856,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109215618452-H264_f008043,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S01_20261109221619105_f000000,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000025,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000050,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000075,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000100,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000125,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000150,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000175,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000200,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000225,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000250,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000275,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000300,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000325,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000350,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000375,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000400,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000425,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000450,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000475,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000500,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000525,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000550,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000650,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000750,B (phone only),1,phone
+R01_A_S01_20261109221619105_f000875,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001025,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001125,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001250,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001300,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001375,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001425,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001575,B (phone only),1,phone
+R01_A_S01_20261109221619105_f001675,B (phone only),1,phone
+R01_A_S01_20261109222259436_f000000,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000025,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000050,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000075,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000100,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000125,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000150,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000175,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000200,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000269,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000282,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000294,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000307,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000319,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000329,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000377,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000393,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000437,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000466,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000585,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000610,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000635,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000660,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000735,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000760,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000810,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000860,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000910,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f000960,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001010,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001060,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001110,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001160,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001210,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001260,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001310,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001360,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001410,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001510,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001560,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001610,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001660,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222259436_f001710,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000023,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000048,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000073,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000098,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000123,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000148,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000173,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000198,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000223,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000248,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000298,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000348,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000398,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000448,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000498,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000548,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000598,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000648,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000698,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000723,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000748,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000773,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000798,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000823,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000848,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000873,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S01_20261109222506906_f000898,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000463,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000537,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000580,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000591,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000659,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f000735,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f001426,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f001435,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f001455,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f001602,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f001746,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f004601,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f004644,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f004686,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f004946,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f005029,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f005094,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f010446,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f010519,A (raw_meat/smoking/bin_open),2,raw_meat
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014141,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014153,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014230,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014296,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014370,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014443,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014488,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014518,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014553,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014602,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014625,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014644,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014672,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014926,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014987,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f014993,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015096,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015151,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015163,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015189,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015197,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015320,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015367,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015418,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015781,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015828,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015954,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f015983,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f016094,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024007,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024038,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024088,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024138,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024188,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024338,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024388,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024438,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024488,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024509,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024733,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024786,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024827,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024886,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f024953,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f025249,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f025270,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f028738,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029438,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029538,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029588,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029601,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029613,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029626,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029638,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029663,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029688,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029713,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029788,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029813,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029838,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029863,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f029926,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030018,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030068,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030168,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030218,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030243,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030268,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030293,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030343,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030418,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030443,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030493,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030518,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030543,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030593,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030618,B (phone only),1,phone
+R01_A_S02_20261106221825500-E32396832-DS-2CD2043G1_f030643,B (phone only),1,phone
+R01_A_S02_20261109222119140_f000000,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000050,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000100,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000150,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000200,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000250,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000300,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000350,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000400,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000417,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000450,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000468,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000473,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000477,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000528,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000578,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000628,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000678,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000728,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000778,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000828,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000878,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000928,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f000978,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001043,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001093,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001193,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001243,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001293,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001343,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001393,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001443,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001493,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001568,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001593,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001618,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001668,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001693,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001718,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001743,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001768,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f001973,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f002009,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f002044,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S02_20261109222119140_f002078,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000923,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000936,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000948,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000961,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000973,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000986,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f000998,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001011,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001023,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001036,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001086,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001136,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001186,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001236,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001286,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001336,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001386,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S04_20261109222506906_f001436,A (raw_meat/smoking/bin_open),2,bin_open
+R01_A_S05_20261109223019963_f000204,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000229,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000254,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000279,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000304,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000329,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000354,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000404,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000429,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000454,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000479,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000504,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000529,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000554,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000579,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000604,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000629,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000654,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000679,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000704,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000729,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000754,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000779,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f000854,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000879,B (phone only),1,phone
+R01_A_S05_20261109223019963_f000979,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001004,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001054,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001154,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001179,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001204,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001229,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001254,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001304,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001329,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001379,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001404,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001429,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001454,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001479,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001604,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001629,B (phone only),1,phone
+R01_A_S05_20261109223019963_f001654,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001679,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001729,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001779,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001804,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001829,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001854,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001879,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001904,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001929,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001954,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f001979,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002004,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002029,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002054,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002079,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002104,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002179,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002204,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002229,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002254,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002279,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002329,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002354,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002660,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002685,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002735,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002835,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002860,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002895,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S05_20261109223019963_f002930,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000362,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000408,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000447,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000475,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000484,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000491,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000497,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000509,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000540,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000611,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000626,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000649,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000671,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000691,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000700,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000713,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000723,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000774,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000844,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000873,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000903,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000929,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000942,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000959,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000979,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000989,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f000997,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001003,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001024,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001039,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001047,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001065,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001071,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001079,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001093,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001108,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001127,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001173,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001318,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001329,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001347,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001376,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001396,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001427,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001524,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001549,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001599,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001624,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001699,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001724,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001774,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001799,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001824,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001849,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f001874,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002124,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002249,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002299,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002549,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002599,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002649,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002699,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002749,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002849,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f002974,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003024,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003049,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003074,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003099,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003124,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003199,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003249,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003274,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003324,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003349,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003374,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003399,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003449,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003699,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003749,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003799,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003824,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003899,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003974,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f003999,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004422,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004497,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004522,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004747,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004772,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004797,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004822,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004847,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004872,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004897,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004922,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004947,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004972,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f004997,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005047,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005072,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005097,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005197,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005247,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005272,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005297,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005322,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005347,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005372,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005397,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005422,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005447,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005472,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005497,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005522,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005547,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005572,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005597,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005622,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005647,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005672,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005697,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f005722,A (raw_meat/smoking/bin_open),2,smoking
+R01_A_S12_20261106233714023_f006282,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006295,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006309,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006316,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006327,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006337,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006364,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006391,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006427,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006489,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006790,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006806,B (phone only),1,phone
+R01_A_S12_20261106233714023_f006819,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020198,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020223,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020273,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020323,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020348,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020448,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020498,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020781,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020831,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020856,B (phone only),1,phone
+R01_A_S12_20261106233714023_f020881,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021006,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021031,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021056,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021081,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021106,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021131,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021531,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021856,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021881,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021906,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021931,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021956,B (phone only),1,phone
+R01_A_S12_20261106233714023_f021981,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022006,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022031,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022081,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022156,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022181,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022231,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022281,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022331,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022406,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022456,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022506,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022531,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022606,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022681,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022706,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022731,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022756,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022781,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022831,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022906,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022931,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022956,B (phone only),1,phone
+R01_A_S12_20261106233714023_f022981,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023031,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023131,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023206,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023256,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023306,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023331,B (phone only),1,phone
+R01_A_S12_20261106233714023_f023531,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000000,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000075,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000150,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000200,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000325,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000400,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000500,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000525,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000575,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000625,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000700,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000800,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000906,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000956,B (phone only),1,phone
+R01_B_S16_20261109221438712_f000981,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001031,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001056,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001081,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001131,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001181,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001281,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001331,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001356,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001406,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001581,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001731,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001781,B (phone only),1,phone
+R01_B_S16_20261109221438712_f001906,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002081,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002181,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002331,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002431,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002481,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002506,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002556,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002606,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002656,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002781,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002856,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002881,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002906,B (phone only),1,phone
+R01_B_S16_20261109221438712_f002956,B (phone only),1,phone
+R01_B_S16_20261109221438712_f003006,B (phone only),1,phone
+R01_B_S16_20261109221438712_f003031,B (phone only),1,phone
+R01cutte-t_A_S22_20261106231439615-H264_f000591,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f000612,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f000709,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f000718,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f000729,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f000737,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001174,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001198,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001219,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001278,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001308,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001317,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001536,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001552,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001599,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001621,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001658,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001671,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001689,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001919,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f001943,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003486,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003501,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003504,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003548,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003870,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f003983,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f004067,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f004120,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f004122,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f004145,A (raw_meat/smoking/bin_open),2,raw_meat
+R01cutte-t_A_S22_20261106231439615-H264_f004152,A (raw_meat/smoking/bin_open),2,raw_meat

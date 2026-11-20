@@ -1,0 +1,41 @@
+check,route_A,route_B,result
+"augmented_only/ top level holds only images, labels, aug_index.csv, classes.txt","images,labels,aug_index.csv,classes.txt","images,labels,aug_index.csv,classes.txt",PASS
+augmented_only/: every file name ends in _aug1 or _aug2,True,True,PASS
+augmented_only/: original frames present,0,0,PASS
+augmented images = planned in step 1,1063,1063,PASS
+augmented images recorded by script = on disk,1063,1063,PASS
+"augmented label files = augmented images (one each, same names)",1063,1063,PASS
+aug_index.csv rows = augmented images on disk,1063,1063,PASS
+dataset_final images/train = original train + augmented,2647,2647,PASS
+dataset_final labels/train = original train + augmented,2647,2647,PASS
+dataset_final images/val = original val,280,280,PASS
+dataset_final labels/val = original val,280,280,PASS
+dataset_final val: augmented files,0,0,PASS
+original train+val files in dataset_final byte-identical to dataset/ (sha256),3728,3728,PASS
+augmented files in dataset_final byte-identical to augmented_only/ (sha256),2126,2126,PASS
+"label lines: 5 fields, class 0-14, values in 0-1, w,h > 0 (dataset_final, all lines)",26265,26265,PASS
+augmented images have 2688x1520 resolution,1063,1063,PASS
+boxes class  0 person: original train + augmented = final train,2095+1446=3541,2095+1446=3541,PASS
+boxes class  1 head_covered: original train + augmented = final train,706+543=1249,706+543=1249,PASS
+boxes class  2 head_uncovered: original train + augmented = final train,1368+879=2247,1368+879=2247,PASS
+boxes class  3 mask_on: original train + augmented = final train,729+387=1116,729+387=1116,PASS
+boxes class  4 mask_off: original train + augmented = final train,848+662=1510,848+662=1510,PASS
+boxes class  5 apron: original train + augmented = final train,587+441=1028,587+441=1028,PASS
+boxes class  6 no_apron: original train + augmented = final train,829+533=1362,829+533=1362,PASS
+boxes class  7 hand_bare: original train + augmented = final train,1562+1293=2855,1562+1293=2855,PASS
+boxes class  8 hand_gloved: original train + augmented = final train,1108+556=1664,1108+556=1664,PASS
+boxes class  9 rte_food: original train + augmented = final train,2866+1216=4082,2866+1216=4082,PASS
+boxes class 10 raw_meat: original train + augmented = final train,95+190=285,95+190=285,PASS
+boxes class 11 smoking: original train + augmented = final train,180+360=540,180+360=540,PASS
+boxes class 12 phone: original train + augmented = final train,304+356=660,304+356=660,PASS
+boxes class 13 bin_closed: original train + augmented = final train,885+458=1343,885+458=1343,PASS
+boxes class 14 bin_open: original train + augmented = final train,134+268=402,134+268=402,PASS
+boxes all classes: original train + augmented = final train,14296+9588=23884,14296+9588=23884,PASS
+val boxes per class unchanged (dataset/ vs dataset_final/),0:377;1:141;2:217;3:89;4:129;5:178;6:122;7:165;8:261;9:529;10:10;11:12;12:23;13:95;14:33,0:377;1:141;2:217;3:89;4:129;5:178;6:122;7:165;8:261;9:529;10:10;11:12;12:23;13:95;14:33,PASS
+data.yaml names and order identical to dataset/data.yaml,"person,head_covered,head_uncovered,mask_on,mask_off,apron,no_apron,hand_bare,hand_gloved,rte_food,raw_meat,smoking,phone,bin_closed,bin_open","person,head_covered,head_uncovered,mask_on,mask_off,apron,no_apron,hand_bare,hand_gloved,rte_food,raw_meat,smoking,phone,bin_closed,bin_open",PASS
+dataset_final/data.yaml path = absolute path of dataset_final,/Users/user/Desktop/RADS_YOLO_prepared/dataset_final,/Users/user/Desktop/RADS_YOLO_prepared/dataset_final,PASS
+no rare-class box lost after retries (count of affected images),0,0,INFO
+generation problems,0,0,PASS
+visual check images written (spread over 4 rare classes),20,20,PASS
+ultralytics check_det_dataset(dataset_final/data.yaml),"OK, nc=15","OK, nc=15",PASS
+"dataset/ unchanged (files, sizes, sha256 before vs after)",3730,3730,PASS

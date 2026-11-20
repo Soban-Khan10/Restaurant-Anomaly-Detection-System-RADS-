@@ -1,0 +1,5 @@
+set,frames,boxes
+original train,1584,14296
+augmented (added),1063,9588
+final train,2647,23884
+val (unchanged),280,2381
