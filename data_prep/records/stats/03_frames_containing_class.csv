@@ -1,0 +1,16 @@
+id,class,overall,train,val
+0,person,1817,1550,267
+1,head_covered,841,700,141
+2,head_uncovered,1523,1306,217
+3,mask_on,807,719,88
+4,mask_off,968,839,129
+5,apron,673,531,142
+6,no_apron,942,820,122
+7,hand_bare,1030,915,115
+8,hand_gloved,853,673,180
+9,rte_food,1315,1131,184
+10,raw_meat,104,94,10
+11,smoking,190,179,11
+12,phone,326,303,23
+13,bin_closed,979,884,95
+14,bin_open,166,133,33

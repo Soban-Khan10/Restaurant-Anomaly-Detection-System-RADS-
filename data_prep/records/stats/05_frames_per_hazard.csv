@@ -1,0 +1,9 @@
+hazard,name,source,overall,train,val
+H-01,Missing hair restraint / head cover,head_uncovered box (annotator tag),1523,1306,217
+H-02,Bare-hand contact with RTE food,DERIVED by rule engine; frames with hand_bare + rte_food,685,611,74
+H-03,Smoking / vaping in prep area,smoking box (annotator tag),190,179,11
+H-04,Phone use during food handling,DERIVED by rule engine; frames with a phone box,326,303,23
+H-05,Open / overflowing waste bin,bin_open box (annotator tag),166,133,33
+H-06,Missing / soiled apron or uniform,no_apron box (annotator tag),942,820,122
+H-07,No hand hygiene: raw meat -> RTE,DERIVED by rule engine; frames with raw_meat + a hand box (needs the time sequence to decide),104,94,10
+H-08,Missing required face mask,mask_off box (annotator tag),968,839,129

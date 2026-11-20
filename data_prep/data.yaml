@@ -1,0 +1,21 @@
+# set this to where the dataset folder is on your machine
+path: <path to your dataset folder>
+train: images/train
+val: images/val
+# test: added later, when the separately recorded test set is ready
+names:
+  0: person
+  1: head_covered
+  2: head_uncovered
+  3: mask_on
+  4: mask_off
+  5: apron
+  6: no_apron
+  7: hand_bare
+  8: hand_gloved
+  9: rte_food
+  10: raw_meat
+  11: smoking
+  12: phone
+  13: bin_closed
+  14: bin_open

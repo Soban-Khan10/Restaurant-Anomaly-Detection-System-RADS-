@@ -1,0 +1,16 @@
+class,new_id,source_boxes_with_this_name,removed_tiny_or_duplicate,renamed_into_this_class,expected_label_lines,label_lines_with_new_id,result
+person,0,2472,0,0,2472,2472,PASS
+head_covered,1,847,0,0,847,847,PASS
+head_uncovered,2,1585,0,0,1585,1585,PASS
+mask_on,3,818,0,0,818,818,PASS
+mask_off,4,975,0,2,977,977,PASS
+apron,5,765,0,0,765,765,PASS
+no_apron,6,951,0,0,951,951,PASS
+hand_bare,7,1727,0,0,1727,1727,PASS
+hand_gloved,8,1369,0,0,1369,1369,PASS
+rte_food,9,3397,2,0,3395,3395,PASS
+raw_meat,10,105,0,0,105,105,PASS
+smoking,11,192,0,0,192,192,PASS
+phone,12,314,0,13,327,327,PASS
+bin_closed,13,981,1,0,980,980,PASS
+bin_open,14,167,0,0,167,167,PASS

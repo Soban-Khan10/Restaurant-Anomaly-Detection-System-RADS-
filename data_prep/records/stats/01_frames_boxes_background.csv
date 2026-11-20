@@ -1,0 +1,5 @@
+measure,overall,train,val
+frames,1864,1584,280
+boxes,16677,14296,2381
+background frames (no boxes),9,6,3
+share of frames,100.0%,85.0%,15.0%
