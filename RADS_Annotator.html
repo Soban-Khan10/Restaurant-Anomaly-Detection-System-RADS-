@@ -619,58 +619,109 @@ async function waitForFrame(v = vid){
 /* Captures run one at a time, so two quick presses cannot write the same frame twice. */
 let captureQueue = Promise.resolve();
 let burstRunning = false, burstStop = false;
-function capture(opts = {}){ const run = captureQueue.then(() => captureNow(opts)); captureQueue = run.catch(() => null); return run; }
-async function captureNow(opts = {}){
-  const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return null; }
-  if (!vid.paused) { vid.pause(); seek(vid.currentTime); }
-  await waitForFrame();
-  if (S.activeClip !== c.id || !S.clips[c.id] || !vid.videoWidth) return null;
-  const t = vid.currentTime, f = c.fps, fi = frameIdx(t, f), m = c.meta;
-  const id = `${slug(m.restaurant_id)}_${slug(m.camera_view)}_${slug(m.session_id)}_${slug(c.name)}_f${String(fi).padStart(6,'0')}`;
-  const already = () => { if (opts.noOpen) return id; openFrame(id); toast('This frame was already captured, opened it'); return id; };
-  if (S.frames[id]) return already();
-  const W = vid.videoWidth, H = vid.videoHeight; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d'); ctx.drawImage(vid, 0, 0, W, H);
+const frameIdFor = (c, fi) => { const m = c.meta; return `${slug(m.restaurant_id)}_${slug(m.camera_view)}_${slug(m.session_id)}_${slug(c.name)}_f${String(fi).padStart(6,'0')}`; };
+/* Time at the middle of the frame that contains t (same rule as seek()). */
+const frameMid = (c, t) => { const f = c.fps || 25; const last = Math.max(0, Math.floor((c.duration || 0) * f) - 1); return (clamp(Math.floor(t * f + 1e-6), 0, last) + 0.5) / f; };
+function grabCanvas(v){ const W = v.videoWidth, H = v.videoHeight; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.getContext('2d').drawImage(v, 0, 0, W, H); return cv; }
+/* Save a grabbed picture as a new frame of clip c at time t. Returns { id, dup } or { id, carriedFrom, fi, t, nBoxes }, or null if it could not be saved.
+   It does not re-render or persist; the caller does that (burst does it once at the end). */
+async function commitFrame(c, t, cv){
+  const f = c.fps, fi = frameIdx(t, f), id = frameIdFor(c, fi);
+  if (S.frames[id]) return { id, dup: true };
+  const W = cv.width, H = cv.height;
   const mime = S.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
   const blob = await new Promise(r => cv.toBlob(r, mime, 0.95));
-  if (!S.clips[c.id]) return null;
-  if (S.frames[id]) return already();
+  if (!S.clips[c.id] || !blob) return null;
+  if (S.frames[id]) return { id, dup: true };
   const tcv = document.createElement('canvas'); tcv.width = 160; tcv.height = Math.round(160 * H / W); tcv.getContext('2d').drawImage(cv, 0, 0, tcv.width, tcv.height);
   const fr = { id, clipId: c.id, clipName: c.name, t: +t.toFixed(4), frameIndex: fi, fps: f, width: W, height: H, ext: S.imageFormat, thumb: tcv.toDataURL('image/jpeg', 0.7),
     captured_at: nowISO(), updated_at: nowISO(), annotator, boxes: [],
-    meta: { ...structuredClone(m), hazards_marked: [], review_status: 'pending', reviewer: '', frame_notes: '' } };
+    meta: { ...structuredClone(c.meta), hazards_marked: [], review_status: 'pending', reviewer: '', frame_notes: '' } };
   let carriedFrom = null;
   if (S.carryForward !== false) { const src = prevCaptured(c.id, t, CARRY_MAX_GAP); if (src && src.boxes.length) { fr.boxes = copyBoxes(src.boxes); carriedFrom = src; } }
   S.frames[id] = fr; if (!S.order.includes(id)) S.order.push(id); S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
   runtime.blobs[id] = blob; cacheImg(id, cv);
   idbPut('images', id, blob).then(ok => { if (ok && runtime.blobs[id] === blob) delete runtime.blobs[id]; });
-  if (!opts.noOpen) openFrame(id); else { renderFrames(); drawTL(); }
-  S.sinceExport = (S.sinceExport || 0) + 1; persist();
+  S.sinceExport = (S.sinceExport || 0) + 1;
+  return { id, carriedFrom, fi, t, nBoxes: fr.boxes.length };
+}
+function capture(){ const run = captureQueue.then(() => captureNow()); captureQueue = run.catch(() => null); return run; }
+async function captureNow(){
+  const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return null; }
+  if (!vid.paused) { vid.pause(); seek(vid.currentTime); }
+  await waitForFrame();
+  if (S.activeClip !== c.id || !S.clips[c.id] || !vid.videoWidth) return null;
+  const t = vid.currentTime, id0 = frameIdFor(c, frameIdx(t, c.fps));
+  const already = id => { openFrame(id); toast('This frame was already captured, opened it'); return id; };
+  if (S.frames[id0]) return already(id0);
+  const r = await commitFrame(c, t, grabCanvas(vid)); if (!r) return null;
+  if (r.dup) return already(r.id);
+  openFrame(r.id); persist();
   if (S.sinceExport % 50 === 0) toast(`${S.sinceExport} frames since your last export. Export a backup now (Export dataset).`, 6000);
-  else if (!opts.quiet) toast(carriedFrom ? `Captured frame ${fi} with ${fr.boxes.length} boxes copied from f${carriedFrom.frameIndex}. Fix what moved, then press Enter.` : `Captured frame ${fi} (${fmtTC(t, f)})`, carriedFrom ? 4000 : 2600);
-  return id;
+  else toast(r.carriedFrom ? `Captured frame ${r.fi} with ${r.nBoxes} boxes copied from f${r.carriedFrom.frameIndex}. Fix what moved, then press Enter.` : `Captured frame ${r.fi} (${fmtTC(r.t, c.fps)})`, r.carriedFrom ? 4000 : 2600);
+  return r.id;
 }
 $('#btnCapture').onclick = () => capture();
-/* Burst: capture a run of frames at a fixed step; each gets the previous frame's boxes. */
+
+/* Burst decoding uses its own hidden <video>, so the visible player, timeline and frame list are not redrawn on every seek. */
+function releaseVideo(v){ try { v.removeAttribute('src'); v.load(); } catch {} }
+async function openDecoder(c){
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = runtime.urls[c.id];
+  const ok = await new Promise(r => { let tm; const done = ok => { clearTimeout(tm); v.removeEventListener('loadeddata', yes); v.removeEventListener('error', no); r(ok); };
+    const yes = () => done(true), no = () => done(false); v.addEventListener('loadeddata', yes); v.addEventListener('error', no); tm = setTimeout(() => done(v.readyState >= 2), 5000); });
+  if (ok && v.videoWidth) return v;
+  releaseVideo(v); return null;
+}
+/* Seek v to t and resolve once that frame can be drawn: on 'seeked' plus, if the browser has frame callbacks, the new frame (waits at most 80 ms more).
+   The frame callback is registered before the seek, so it cannot be missed when it fires before 'seeked'. */
+function seekVideo(v, t){ return new Promise(res => {
+  let fin = false, seeked = false, painted = false, tLong, tShort;
+  const rvfc = typeof v.requestVideoFrameCallback === 'function';
+  const done = () => { if (fin) return; fin = true; clearTimeout(tLong); clearTimeout(tShort); v.removeEventListener('seeked', onSeeked); res(); };
+  const onSeeked = () => { seeked = true; if (painted || !rvfc) done(); else tShort = setTimeout(done, 80); };
+  if (rvfc) v.requestVideoFrameCallback(() => { painted = true; if (seeked) done(); });
+  v.addEventListener('seeked', onSeeked); tLong = setTimeout(done, 3000);
+  v.currentTime = t;
+}); }
+/* Burst: capture a run of frames at a fixed step; each gets the previous frame's boxes.
+   Seeking runs ahead while earlier frames are still being encoded and stored (at most 3 waiting). */
 async function burst(){
   const btn = $('#btnBurst');
   if (burstRunning) { burstStop = true; btn.textContent = 'Stopping…'; return; }
   const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return; }
   if (!vid.paused) vid.pause();
-  const step = +$('#burstStep').value, n = +$('#burstCount').value; const ids = [];
+  const step = +$('#burstStep').value, n = +$('#burstCount').value; const got = [];
   burstRunning = true; burstStop = false; $('#btnCapture').disabled = true; btn.textContent = `Stop 0/${n}`;
-  let clipChanged = false;
+  let clipChanged = false, failed = 0, dec = null; const export0 = S.sinceExport || 0;
+  let chain = Promise.resolve(), pending = 0;
+  const stillOn = () => S.activeClip === c.id && !!S.clips[c.id];
   try {
     await captureQueue;
     const t0 = vid.currentTime;
+    dec = await openDecoder(c); const v = dec || vid;
     for (let k = 0; k < n && !burstStop; k++) { const tt = t0 + k * step; if (tt >= c.duration - 1e-3) break;
-      if (S.activeClip !== c.id) { clipChanged = true; break; }
-      seek(tt); await waitForFrame();
-      if (burstStop) break; if (S.activeClip !== c.id) { clipChanged = true; break; }
-      const id = await capture({ noOpen: true, quiet: true }); if (id && !ids.includes(id)) ids.push(id);
-      if (!burstStop) btn.textContent = `Stop ${k + 1}/${n}`; }
-  } finally { burstRunning = false; btn.textContent = 'Burst'; const cc = clip(); $('#btnCapture').disabled = !(cc && runtime.urls[cc.id]); }
-  if (clipChanged) { toast(`Burst stopped because the clip changed. ${ids.length} frames captured.`, 4000); return; }
-  if (ids.length) { openFrame(ids[0]); toast(`Captured ${ids.length} frames. Go through them with ] , fix boxes that moved, press Enter on each.`, 6000); }
+      if (!stillOn()) { clipChanged = true; break; }
+      const tm = frameMid(c, tt), want = frameIdFor(c, frameIdx(tm, c.fps));
+      if (S.frames[want]) { got[k] = want; btn.textContent = `Stop ${k + 1}/${n}`; continue; }
+      await seekVideo(v, tm);
+      if (v === vid) await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (burstStop) break; if (!stillOn()) { clipChanged = true; break; }
+      const at = v.currentTime, cv = grabCanvas(v), slot = k;
+      pending++;
+      chain = chain.then(() => commitFrame(c, at, cv)).then(r => { if (r) got[slot] = r.id; else failed++; }, () => { failed++; }).finally(() => { pending--; });
+      if (pending >= 3) await chain;
+      if (!burstStop) btn.textContent = `Stop ${k + 1}/${n}`;
+      if (k % 5 === 4) persist();
+    }
+    await chain;
+  } finally { if (dec) releaseVideo(dec); burstRunning = false; btn.textContent = 'Burst'; const cc = clip(); $('#btnCapture').disabled = !(cc && runtime.urls[cc.id]); }
+  const ids = [...new Set(got.filter(Boolean))];
+  persist();
+  const nag = Math.floor((S.sinceExport || 0) / 50) > Math.floor(export0 / 50) ? ` ${S.sinceExport} frames since your last export, export a backup now.` : '';
+  const miss = failed ? ` ${failed} could not be saved.` : '';
+  if (clipChanged || !stillOn()) { renderAll(); toast(`Burst stopped because the clip changed. ${ids.length} frames captured.${miss}`, 4000); return; }
+  if (ids.length) { openFrame(ids[0]); toast(`Captured ${ids.length} frames.${miss} Go through them with ] , fix boxes that moved, press Enter on each.${nag}`, 6000); }
+  else { renderAll(); if (failed) toast(`Burst could not save any frames.`, 4000); }
 }
 $('#btnBurst').onclick = burst;
 $('#carryChk').checked = S.carryForward !== false;
