@@ -380,7 +380,16 @@ let idb = null;
 function openDB(){ return new Promise(res => { try { const r = indexedDB.open('rads-annotator', 1);
   r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('images'); };
   r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch { res(null); } }); }
-function idbPut(store, key, val){ if (!idb) return Promise.resolve(); return new Promise(res => { try { const tx = idb.transaction(store,'readwrite'); tx.objectStore(store).put(val, key); tx.oncomplete = res; tx.onerror = res; } catch { res(); } }); }
+/* Resolves true when the value is stored, false otherwise (and warns, at most once every 10 s). */
+let idbWarnAt = 0;
+function idbPut(store, key, val){
+  let doneOnce = false;
+  const finish = (ok, res) => { if (doneOnce) return; doneOnce = true;
+    if (!ok && Date.now() - idbWarnAt > 10000) { idbWarnAt = Date.now(); toast('Could not save to browser storage (it may be full or blocked). Export your work now so nothing is lost.', 6000); }
+    res(ok); };
+  return new Promise(res => { if (!idb) { finish(false, res); return; }
+    try { const tx = idb.transaction(store,'readwrite'); tx.objectStore(store).put(val, key); tx.oncomplete = () => finish(true, res); tx.onerror = () => finish(false, res); tx.onabort = () => finish(false, res); }
+    catch { finish(false, res); } }); }
 function idbGet(store, key){ if (!idb) return Promise.resolve(null); return new Promise(res => { try { const q = idb.transaction(store).objectStore(store).get(key); q.onsuccess = () => res(q.result ?? null); q.onerror = () => res(null); } catch { res(null); } }); }
 function idbDel(store, key){ if (!idb) return Promise.resolve(); return new Promise(res => { try { const tx = idb.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = res; tx.onerror = res; } catch { res(); } }); }
 let saveT = 0;
@@ -599,25 +608,41 @@ function renderEvents(){
 function prevCaptured(clipId, t, maxGap = Infinity){ let best = null; for (const id of S.order) { const f = S.frames[id]; if (!f || f.clipId !== clipId || f.t >= t - 1e-6) continue; if (t - f.t > maxGap) continue; if (!best || f.t > best.t) best = f; } return best; }
 const copyBoxes = (boxes, carried = true) => boxes.map(b => { const n = { ...structuredClone(b), id: uid(), created_at: nowISO(), annotator }; if (carried) n.carried = true; else delete n.carried; return n; });
 const CARRY_MAX_GAP = 15;
-async function capture(opts = {}){
+/* Wait until the video shows the frame at currentTime: 'seeked', then the decoded frame (requestVideoFrameCallback, max 600 ms), then two paints.
+   The frame-callback wait only runs after a seek: on a paused video with no pending seek it would never fire and only add 600 ms. */
+async function waitForFrame(v = vid){
+  const wasSeeking = v.seeking;
+  if (wasSeeking) await new Promise(r => { const done = () => { v.removeEventListener('seeked', done); r(); }; v.addEventListener('seeked', done); setTimeout(done, 3000); });
+  if (wasSeeking && typeof v.requestVideoFrameCallback === 'function') await new Promise(r => { let fin = false; const done = () => { if (!fin) { fin = true; r(); } }; v.requestVideoFrameCallback(done); setTimeout(done, 600); });
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+/* Captures run one at a time, so two quick presses cannot write the same frame twice. */
+let captureQueue = Promise.resolve();
+let burstRunning = false, burstStop = false;
+function capture(opts = {}){ const run = captureQueue.then(() => captureNow(opts)); captureQueue = run.catch(() => null); return run; }
+async function captureNow(opts = {}){
   const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return null; }
   if (!vid.paused) { vid.pause(); seek(vid.currentTime); }
-  if (vid.seeking) await new Promise(r => { vid.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); });
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await waitForFrame();
+  if (S.activeClip !== c.id || !S.clips[c.id] || !vid.videoWidth) return null;
   const t = vid.currentTime, f = c.fps, fi = frameIdx(t, f), m = c.meta;
   const id = `${slug(m.restaurant_id)}_${slug(m.camera_view)}_${slug(m.session_id)}_${slug(c.name)}_f${String(fi).padStart(6,'0')}`;
-  if (S.frames[id]) { if (opts.noOpen) return id; openFrame(id); toast('This frame was already captured, opened it'); return id; }
+  const already = () => { if (opts.noOpen) return id; openFrame(id); toast('This frame was already captured, opened it'); return id; };
+  if (S.frames[id]) return already();
   const W = vid.videoWidth, H = vid.videoHeight; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d'); ctx.drawImage(vid, 0, 0, W, H);
   const mime = S.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
   const blob = await new Promise(r => cv.toBlob(r, mime, 0.95));
+  if (!S.clips[c.id]) return null;
+  if (S.frames[id]) return already();
   const tcv = document.createElement('canvas'); tcv.width = 160; tcv.height = Math.round(160 * H / W); tcv.getContext('2d').drawImage(cv, 0, 0, tcv.width, tcv.height);
   const fr = { id, clipId: c.id, clipName: c.name, t: +t.toFixed(4), frameIndex: fi, fps: f, width: W, height: H, ext: S.imageFormat, thumb: tcv.toDataURL('image/jpeg', 0.7),
     captured_at: nowISO(), updated_at: nowISO(), annotator, boxes: [],
     meta: { ...structuredClone(m), hazards_marked: [], review_status: 'pending', reviewer: '', frame_notes: '' } };
   let carriedFrom = null;
   if (S.carryForward !== false) { const src = prevCaptured(c.id, t, CARRY_MAX_GAP); if (src && src.boxes.length) { fr.boxes = copyBoxes(src.boxes); carriedFrom = src; } }
-  S.frames[id] = fr; S.order.push(id); S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
-  runtime.blobs[id] = blob; cacheImg(id, cv); idbPut('images', id, blob);
+  S.frames[id] = fr; if (!S.order.includes(id)) S.order.push(id); S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
+  runtime.blobs[id] = blob; cacheImg(id, cv);
+  idbPut('images', id, blob).then(ok => { if (ok && runtime.blobs[id] === blob) delete runtime.blobs[id]; });
   if (!opts.noOpen) openFrame(id); else { renderFrames(); drawTL(); }
   S.sinceExport = (S.sinceExport || 0) + 1; persist();
   if (S.sinceExport % 50 === 0) toast(`${S.sinceExport} frames since your last export. Export a backup now (Export dataset).`, 6000);
@@ -626,17 +651,25 @@ async function capture(opts = {}){
 }
 $('#btnCapture').onclick = () => capture();
 /* Burst: capture a run of frames at a fixed step; each gets the previous frame's boxes. */
-let burstRunning = false, burstStop = false;
 async function burst(){
-  if (burstRunning) { burstStop = true; return; }
+  const btn = $('#btnBurst');
+  if (burstRunning) { burstStop = true; btn.textContent = 'Stopping…'; return; }
   const c = clip(); if (!c || !runtime.urls[c.id] || !vid.videoWidth) { toast('Load a video first'); return; }
-  const step = +$('#burstStep').value, n = +$('#burstCount').value; const t0 = vid.currentTime; const ids = [];
-  burstRunning = true; burstStop = false; const btn = $('#btnBurst');
+  if (!vid.paused) vid.pause();
+  const step = +$('#burstStep').value, n = +$('#burstCount').value; const ids = [];
+  burstRunning = true; burstStop = false; $('#btnCapture').disabled = true; btn.textContent = `Stop 0/${n}`;
+  let clipChanged = false;
   try {
+    await captureQueue;
+    const t0 = vid.currentTime;
     for (let k = 0; k < n && !burstStop; k++) { const tt = t0 + k * step; if (tt >= c.duration - 1e-3) break;
-      seek(tt); if (vid.seeking) await new Promise(r => { vid.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); });
-      const id = await capture({ noOpen: true, quiet: true }); if (id && !ids.includes(id)) ids.push(id); btn.textContent = `Stop ${k + 1}/${n}`; }
-  } finally { burstRunning = false; btn.textContent = 'Burst'; }
+      if (S.activeClip !== c.id) { clipChanged = true; break; }
+      seek(tt); await waitForFrame();
+      if (burstStop) break; if (S.activeClip !== c.id) { clipChanged = true; break; }
+      const id = await capture({ noOpen: true, quiet: true }); if (id && !ids.includes(id)) ids.push(id);
+      if (!burstStop) btn.textContent = `Stop ${k + 1}/${n}`; }
+  } finally { burstRunning = false; btn.textContent = 'Burst'; const cc = clip(); $('#btnCapture').disabled = !(cc && runtime.urls[cc.id]); }
+  if (clipChanged) { toast(`Burst stopped because the clip changed. ${ids.length} frames captured.`, 4000); return; }
   if (ids.length) { openFrame(ids[0]); toast(`Captured ${ids.length} frames. Go through them with ] , fix boxes that moved, press Enter on each.`, 6000); }
 }
 $('#btnBurst').onclick = burst;
@@ -653,7 +686,7 @@ function setMode(m){
   vid.hidden = !(m === 'video' && hasVid); $('#ed').hidden = m !== 'frame';
   $('#noVideo').hidden = !(m === 'video' && c && !hasVid);
   if (c && !hasVid) { $('#noVideo').innerHTML = ''; $('#noVideo').append(el('div', {}, el('p', { text: `The video file for “${c.name}” is not loaded in this browser.` }), el('p', { text: 'Import the same file again to scrub and capture more frames. Its captured frames are still listed on the left.' }), el('button', { class: 'btn primary', text: 'Import video', onclick: () => $('#fileVideo').click() }))); }
-  $('#btnCapture').disabled = !hasVid;
+  $('#btnCapture').disabled = !hasVid || burstRunning;
   if (m !== 'video' && !vid.paused) vid.pause();
   renderStageInfo(); renderSidePanels(); if (m === 'frame') { edResize(); fitImage(); }
 }
@@ -668,6 +701,8 @@ function renderStageInfo(){ const c = clip(), f = frame(); let s = '';
 /* Keep at most a few full-size images in memory. Older ones are released and re-read from browser storage when needed. */
 const IMG_CACHE_MAX = 6; const imgOrder = [];
 function releaseImg(im){ try { if (im && typeof im.close === 'function') im.close(); else if (im) { im.width = 0; im.height = 0; } } catch {} }
+/* Remove one frame's full-size image from memory and from the cache order. */
+function dropImg(id){ releaseImg(runtime.imgs[id]); delete runtime.imgs[id]; const i = imgOrder.indexOf(id); if (i >= 0) imgOrder.splice(i, 1); }
 function cacheImg(id, img){
   runtime.imgs[id] = img; const i = imgOrder.indexOf(id); if (i >= 0) imgOrder.splice(i, 1); imgOrder.push(id);
   while (imgOrder.length > IMG_CACHE_MAX) { const k = imgOrder.findIndex(x => x !== S.activeFrame); if (k < 0) break; const old = imgOrder.splice(k, 1)[0]; releaseImg(runtime.imgs[old]); delete runtime.imgs[old]; }
@@ -682,7 +717,8 @@ async function openFrame(id){
   if (S.activeClip !== f.clipId && S.clips[f.clipId]) { S.activeClip = f.clipId; const c = clip(); $('#fps').value = c.fps;
     if (runtime.urls[c.id] && vid.dataset.clip !== c.id) { vid.dataset.clip = c.id; vid.src = runtime.urls[c.id]; vid.load(); } view.pps = 0; }
   if (runtime.urls[f.clipId] && Math.abs(vid.currentTime - f.t) > 1e-3) { const go = () => { vid.currentTime = f.t; }; vid.readyState >= 1 ? go() : vid.addEventListener('loadedmetadata', go, { once: true }); }
-  await getImage(id); setMode('frame'); renderAll(); persist();
+  const img = await getImage(id); setMode('frame'); renderAll(); persist();
+  if (!img) toast('The picture for this frame is missing from this browser. Open a dataset ZIP that contains it to restore it.', 5000);
   const fl = document.querySelector(`.fr[data-id="${CSS.escape(id)}"]`); fl?.scrollIntoView({ block: 'nearest' });
 }
 function visibleFrames(){ const flt = $('#frameFilter').value;
@@ -692,7 +728,7 @@ function navFrame(d){ const ids = visibleFrames(); if (!ids.length) return; let 
 $('#btnPrev').onclick = () => navFrame(-1); $('#btnNext').onclick = () => navFrame(1);
 $('#btnDelFrame').onclick = async () => { const f = frame(); if (!f) return;
   if (!(await confirmBox('Delete this frame?', `${f.id} and its ${f.boxes.length} box(es) will be removed from this browser. Exported ZIPs are not affected.`, 'Delete frame'))) return;
-  const ids = visibleFrames(); const i = ids.indexOf(f.id); delete S.frames[f.id]; S.order = S.order.filter(x => x !== f.id); idbDel('images', f.id); delete runtime.imgs[f.id]; delete runtime.blobs[f.id];
+  const ids = visibleFrames(); const i = ids.indexOf(f.id); delete S.frames[f.id]; S.order = S.order.filter(x => x !== f.id); idbDel('images', f.id); dropImg(f.id); delete runtime.blobs[f.id];
   const next = ids[i + 1] || ids[i - 1]; S.activeFrame = null; if (next && S.frames[next]) openFrame(next); else { setMode('video'); renderAll(); } persist(); };
 $('#frameFilter').onchange = renderFrames;
 /* Delete every captured frame (clips stay). Needs the word "delete" typed, so it cannot happen by accident. */
@@ -702,7 +738,7 @@ $('#btnDelAll').onclick = () => {
     const inp = el('input', { type: 'text', id: 'delAllConfirm', placeholder: 'type delete', autocomplete: 'off' });
     const go = el('button', { class: 'btn primary', text: `Delete all ${n} frames`, disabled: true, onclick: async () => {
       go.disabled = true;
-      for (const id of S.order) { idbDel('images', id); releaseImg(runtime.imgs[id]); }
+      for (const id of S.order) { idbDel('images', id); dropImg(id); }
       S.frames = {}; S.order = []; S.activeFrame = null; sel = null;
       runtime.imgs = {}; runtime.blobs = {}; runtime.undo = {}; runtime.redo = {}; imgOrder.length = 0;
       close(); setMode('video'); renderAll(); persist(); toast(`Deleted ${n} frames. Clips and their recording details are kept.`);
@@ -767,13 +803,14 @@ ed.addEventListener('pointerdown', e => {
   const hi = hitHandle(sx, sy);
   if (hi >= 0) { const b = f.boxes.find(b => b.id === sel); snapshot(); drag = { kind: 'resize', hi, b, orig: { ...b } }; return; }
   const hb = hitBox(p);
-  if (hb && (S.tool === 'select' || hb.id === sel || e.altKey === false && S.tool === 'select')) { sel = hb.id; snapshot(); drag = { kind: 'move', b: hb, p0: p, orig: { ...hb }, moved: false }; renderBoxes(); drawEd(); return; }
+  /* Only the Select tool (or Alt+drag) moves a box. In Draw mode a drag inside a box draws a new box; a plain click still selects it. */
+  if (hb && (S.tool === 'select' || e.altKey)) { sel = hb.id; snapshot(); drag = { kind: 'move', b: hb, p0: p, orig: { ...hb }, moved: false }; renderBoxes(); drawEd(); return; }
   if (S.tool === 'draw') { if (p.x < 0 || p.y < 0 || p.x > f.width || p.y > f.height) { sel = null; renderBoxes(); drawEd(); return; } drag = { kind: 'new', a: p, b: p, hb }; return; }
   sel = hb ? hb.id : null; renderBoxes(); drawEd();
 });
 ed.addEventListener('pointermove', e => {
   const r = ed.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; mouse = { x: sx, y: sy }; const p = toImg(sx, sy); const f = frame(); if (!f) return;
-  if (!drag) { const hi = hitHandle(sx, sy); ed.style.cursor = spaceDown ? 'grab' : hi >= 0 ? HCUR[hi] : (hitBox(p) && (S.tool === 'select' || hitBox(p).id === sel)) ? 'move' : S.tool === 'draw' ? 'crosshair' : 'default'; if (S.tool === 'draw') drawEd(); return; }
+  if (!drag) { const hi = hitHandle(sx, sy); ed.style.cursor = spaceDown ? 'grab' : hi >= 0 ? HCUR[hi] : ((S.tool === 'select' || e.altKey) && hitBox(p)) ? 'move' : S.tool === 'draw' ? 'crosshair' : 'default'; if (S.tool === 'draw') drawEd(); return; }
   if (drag.kind === 'pan') { ev.ox = drag.ox + sx - drag.sx; ev.oy = drag.oy + sy - drag.sy; ed.style.cursor = 'grabbing'; }
   else if (drag.kind === 'new') drag.b = p;
   else if (drag.kind === 'move') { const o = drag.orig; drag.b.x = clamp(o.x + p.x - drag.p0.x, 0, f.width - o.w); drag.b.y = clamp(o.y + p.y - drag.p0.y, 0, f.height - o.h); drag.moved = true; }
@@ -783,7 +820,7 @@ ed.addEventListener('pointermove', e => {
   drawEd();
 });
 ed.addEventListener('pointerleave', () => { mouse = null; if (!drag) drawEd(); });
-ed.addEventListener('pointerup', () => {
+function endEdDrag(){
   const f = frame(); if (!drag || !f) { drag = null; return; } const d = drag; drag = null;
   if (d.kind === 'new') { const r = normRect(d.a, d.b);
     if (r.w * ev.scale < 4 || r.h * ev.scale < 4) { if (d.hb) sel = d.hb.id; else sel = null; renderBoxes(); drawEd(); return; }
@@ -791,7 +828,10 @@ ed.addEventListener('pointerup', () => {
   if (d.kind === 'move' && !d.moved) { runtime.undo[f.id]?.pop(); renderBoxes(); drawEd(); return; }
   if (d.kind === 'resize' || d.kind === 'move') { if (d.b.w < 2 || d.b.h < 2) Object.assign(d.b, d.orig); touched(); }
   ed.style.cursor = '';
-});
+}
+ed.addEventListener('pointerup', endEdDrag);
+/* If the pointer capture is lost without a pointerup (pointercancel, window switch), end the drag so it does not stay stuck. */
+ed.addEventListener('lostpointercapture', endEdDrag);
 ed.addEventListener('contextmenu', e => e.preventDefault());
 ed.addEventListener('wheel', e => { if (!frame()) return; e.preventDefault(); const r = ed.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; const p = toImg(sx, sy);
   const k = Math.exp(-e.deltaY * 0.0015); ev.scale = clamp(ev.scale * k, 0.05, 40); ev.ox = sx - p.x * ev.scale; ev.oy = sy - p.y * ev.scale; drawEd(); }, { passive: false });
@@ -904,7 +944,7 @@ function deleteClip(id){
   const c = S.clips[id]; if (!c) return; const fids = S.order.filter(f => S.frames[f]?.clipId === id); const n = fids.length;
   modal((m, close) => {
     const go = withFrames => {
-      if (withFrames) { for (const fid of fids) { delete S.frames[fid]; idbDel('images', fid); delete runtime.imgs[fid]; delete runtime.blobs[fid]; }
+      if (withFrames) { for (const fid of fids) { delete S.frames[fid]; idbDel('images', fid); dropImg(fid); delete runtime.blobs[fid]; }
         S.order = S.order.filter(x => !fids.includes(x)); if (fids.includes(S.activeFrame)) S.activeFrame = null; }
       if (runtime.urls[id]) URL.revokeObjectURL(runtime.urls[id]); delete runtime.urls[id]; delete runtime.files[id]; delete runtime.thumbs[id]; delete S.clips[id];
       close();
@@ -940,7 +980,7 @@ function renderFrames(){
 }
 function renderSidePanels(){ renderBoxes(); renderFrameMeta(); renderFrames(); }
 function renderAll(){ renderClips(); renderClipMeta(); renderEvents(); renderClasses(); renderSidePanels(); renderStageInfo(); updateTC(); drawTL(); drawEd();
-  const c = clip(); $('#btnCapture').disabled = !(c && runtime.urls[c.id]); $('#drop').hidden = !!c || S.mode === 'frame'; }
+  const c = clip(); $('#btnCapture').disabled = !(c && runtime.urls[c.id]) || burstRunning; $('#drop').hidden = !!c || S.mode === 'frame'; }
 
 /* ---------------- classes editor ---------------- */
 $('#btnClasses').onclick = () => modal((m, close) => {
@@ -1184,7 +1224,7 @@ async function importZip(file){
       captured_at: r.annotation.captured_at, updated_at: r.annotation.updated_at, annotator: r.annotation.annotator, last_edited_by: r.annotation.last_edited_by,
       boxes: r.boxes.map(b => ({ id: b.box_id, cls: map[b.class_id] ?? b.class_id, x: b.bbox_xywh_px[0], y: b.bbox_xywh_px[1], w: b.bbox_xywh_px[2], h: b.bbox_xywh_px[3], hazard: b.hazard || '', status: b.status, worker_id: b.worker_id || '', occluded: !!b.occluded, truncated: !!b.truncated, note: b.note || '', annotator: b.annotator })),
       meta: { ...r.recording, zone: r.context.zone, lighting: r.context.lighting, split: r.context.split, hazards_marked: (r.context.hazards_marked || []).filter(h => !(r.context.hazards_from_boxes || []).includes(h)), frame_status: r.annotation.frame_status, review_status: r.annotation.review_status, reviewer: r.annotation.reviewer || '', frame_notes: r.annotation.notes || '' } };
-    runtime.blobs[r.frame_id] = blob; idbPut('images', r.frame_id, blob); if (!S.order.includes(r.frame_id)) S.order.push(r.frame_id); ex ? updated++ : added++;
+    const fid = r.frame_id; runtime.blobs[fid] = blob; idbPut('images', fid, blob).then(ok => { if (ok && runtime.blobs[fid] === blob) delete runtime.blobs[fid]; }); if (!S.order.includes(r.frame_id)) S.order.push(r.frame_id); ex ? updated++ : added++;
   }
   S.order.sort((a, b) => { const A = S.frames[a], B = S.frames[b]; return A.clipId === B.clipId ? A.t - B.t : A.clipId.localeCompare(B.clipId); });
   if (!S.activeClip && Object.keys(S.clips).length) S.activeClip = Object.keys(S.clips)[0];
@@ -1205,6 +1245,8 @@ $('#annotator').onchange = e => { if (e.target.value === 'other') { modal((m, cl
 
 document.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase(); if (['input','select','textarea'].includes(tag) || $('#modalRoot').children.length) { if (e.key === 'Escape') $('#modalRoot').innerHTML = ''; return; }
+  /* A focused button must not also be "clicked" by Enter / Space: drop focus so the key acts only as a shortcut. */
+  if (tag === 'button' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.target.blur(); }
   const k = e.key, mod = e.ctrlKey || e.metaKey; const inFrame = S.mode === 'frame' && frame();
   if (mod && k.toLowerCase() === 'z') { e.preventDefault(); undo(e.shiftKey); return; }
   if (mod && k.toLowerCase() === 'y') { e.preventDefault(); undo(true); return; }
@@ -1218,7 +1260,7 @@ document.addEventListener('keydown', e => {
     setMode('video'); e.shiftKey ? seek(vid.currentTime + dir) : step(dir); return; }
   if ((k === 'ArrowUp' || k === 'ArrowDown') && inFrame && sel) { e.preventDefault(); const f = frame(), b = f.boxes.find(b => b.id === sel); const d = (e.shiftKey ? 10 : 1) * (k === 'ArrowUp' ? -1 : 1); snapshot(); b.y = clamp(b.y + d, 0, f.height - b.h); touched(); return; }
   const lk = k.toLowerCase();
-  if (lk === 'c') { capture(); return; }
+  if (lk === 'c') { if (e.repeat || burstRunning) return; capture(); return; }
   if (lk === 'p' && inFrame) { pastePrev(); return; }
   if (k === 'Enter' && inFrame) { e.preventDefault(); confirmFrame(); return; }
   if (lk === 'i') { setMode('video'); markIn(); return; } if (lk === 'o') { setMode('video'); markOut(); return; }
@@ -1230,6 +1272,7 @@ document.addEventListener('keydown', e => {
   if (/^[1-9]$/.test(k)) { const id = runtime.keyClasses?.[+k - 1]; if (id != null) pickClass(id); }
 });
 document.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; ed.style.cursor = ''; } });
+window.addEventListener('blur', () => { spaceDown = false; ed.style.cursor = ''; });
 window.addEventListener('beforeunload', () => { idbPut('kv', 'state', JSON.parse(JSON.stringify(S))); });
 
 /* ---------------- boot ---------------- */
@@ -1240,6 +1283,7 @@ window.addEventListener('beforeunload', () => { idbPut('kv', 'state', JSON.parse
   idb = await openDB();
   const st = await idbGet('kv', 'state');
   if (st && st.version === 1) { Object.assign(S, st); S.mode = 'video'; if (S.activeClip && !S.clips[S.activeClip]) S.activeClip = null; S.classSet = st.classSet; migrateClasses(); }
+  $('#carryChk').checked = S.carryForward !== false;
   setMode('video'); renderAll();
   if (S.order.length) toast(`Restored ${S.order.length} captured frames from this browser. Re-import videos to keep scrubbing.`, 4200);
 })();
