@@ -1,17 +1,40 @@
-"""FastAPI dependencies: DB session, current user, role checks."""
+"""FastAPI dependencies: DB session, current user, role checks, internal-call check, evidence folder."""
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth import TokenError, decode_access_token
-from shared.contract import RoleName
+from shared.config import get_settings
+from shared.contract import INTERNAL_HEADER, RoleName
 from shared.db import SessionLocal
+
+LOCALHOST = {"127.0.0.1", "::1"}
+
+
+def get_evidence_dir() -> Path:
+    """rads_data/evidence (overridden in tests)."""
+    return get_settings().evidence_dir
+
+
+def require_internal(
+    request: Request,
+    token: str | None = Header(default=None, alias=INTERNAL_HEADER, include_in_schema=False),
+) -> None:
+    """/internal/* only: caller must be on this machine and send X-RADS-Internal: <RADS_INTERNAL_TOKEN>."""
+    host = request.client.host if request.client else None
+    if host not in LOCALHOST:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Internal calls are accepted from 127.0.0.1 only")
+    expected = get_settings().internal_token
+    if not expected or not token or not hmac.compare_digest(token.encode(), expected.encode()):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or wrong internal token")
 
 
 def get_db() -> Iterator[Session]:

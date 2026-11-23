@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, users
+from app.routes import auth, evidence, incidents, internal, users
 from shared.config import get_settings
 
 log = logging.getLogger("rads.app")
@@ -39,6 +39,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(auth.router)
     app.include_router(users.router)
+    app.include_router(incidents.router)
+    app.include_router(evidence.router)
+    app.include_router(internal.router)
     return app
 
 
