@@ -1,0 +1,20 @@
+# Environments and secrets
+.venv/
+.env
+
+# Runtime data (DB, evidence, reports, logs) – never committed
+rads_data/
+
+# Model weights and exports
+models/
+*.pt
+*.mlpackage
+
+# Video clips
+clips/
+
+# Dashboard dependencies
+node_modules/
+
+# Python caches
+__pycache__/

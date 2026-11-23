@@ -1,0 +1,60 @@
+# RADS starting values, read by scripts/seed.py (shared contract section 4).
+# Changed only by agreement of both members (own small PR).
+# After seeding, rules and zones are edited on the dashboard; re-running seed.py never overwrites existing rows.
+
+roles: [Admin, Manager, Technical]
+
+admin:
+  username: admin            # password is asked on the command line, stored with bcrypt
+  full_name: RADS Administrator
+
+# The 10 model classes the rules use. Class ids always come from model.names, never from this list's order.
+classes: [person, head_covered, head_uncovered, mask_on, mask_off, apron, no_apron, phone, bin_closed, bin_open]
+
+hazards:
+  - {hazard_id: H-01, name: Head cover missing,        violation_class: head_uncovered, compliant_class: head_covered, tied_to: worker}
+  - {hazard_id: H-04, name: Phone in preparation area, violation_class: phone,          compliant_class: null,         tied_to: zone}
+  - {hazard_id: H-05, name: Bin left open,             violation_class: bin_open,       compliant_class: bin_closed,   tied_to: zone}
+  - {hazard_id: H-06, name: Apron missing,             violation_class: no_apron,       compliant_class: apron,        tied_to: worker}
+  - {hazard_id: H-08, name: Mask missing,              violation_class: mask_off,       compliant_class: mask_on,      tied_to: worker}
+
+# rtsp_env names the .env variable that holds the camera's RTSP URL (passwords stay out of git).
+cameras:
+  - {camera_id: 1, name: Camera 1, rtsp_env: CAM1_RTSP, target_fps: 5}
+  - {camera_id: 2, name: Camera 2, rtsp_env: CAM2_RTSP, target_fps: 5}
+
+# Polygons are [[x, y], ...] in camera pixels.
+# PLACEHOLDERS: redraw by hand from a real snapshot of each camera before the first real run
+# (later they are edited on the dashboard). One prep zone per camera, and one waste zone on the
+# camera that sees the bin. It is set to camera 1 here; move it if the bin is on camera 2.
+zones:
+  - camera_id: 1
+    name: Prep area 1
+    type: prep
+    polygon: [[0, 0], [1920, 0], [1920, 1080], [0, 1080]]
+  - camera_id: 2
+    name: Prep area 2
+    type: prep
+    polygon: [[0, 0], [1920, 0], [1920, 1080], [0, 1080]]
+  - camera_id: 1
+    name: Waste bin
+    type: waste
+    polygon: [[1500, 700], [1900, 700], [1900, 1060], [1500, 1060]]
+
+rules:
+  defaults:
+    enabled: true
+    conf_threshold: 0.45
+    window_s: 5
+    min_ratio: 0.70
+    end_gap_s: 5
+    cooldown_s: 60
+    severity: Medium
+  overrides:                 # per-hazard changes to the defaults
+    H-04: {min_ratio: 0.30}
+  zone_type:                 # which zone type each hazard's rule is attached to
+    H-01: prep
+    H-04: prep
+    H-06: prep
+    H-08: prep
+    H-05: waste
