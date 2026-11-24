@@ -23,23 +23,26 @@ cameras:
   - {camera_id: 1, name: Camera 1, rtsp_env: CAM1_RTSP, target_fps: 5}
   - {camera_id: 2, name: Camera 2, rtsp_env: CAM2_RTSP, target_fps: 5}
 
-# Polygons are [[x, y], ...] in camera pixels.
-# PLACEHOLDERS: redraw by hand from a real snapshot of each camera before the first real run
-# (later they are edited on the dashboard). One prep zone per camera, and one waste zone on the
-# camera that sees the bin. It is set to camera 1 here; move it if the bin is on camera 2.
+# Polygons are [[x, y], ...] in camera pixels (both cameras are 2688x1520).
+# Camera 1 and camera 2 are entirely prep; the bin is on camera 1. Camera 2's ignore zone covers the shutter,
+# street window and fan beyond the order counter (customers); the counter top itself stays prep.
 zones:
   - camera_id: 1
     name: Prep area 1
     type: prep
-    polygon: [[0, 0], [1920, 0], [1920, 1080], [0, 1080]]
+    polygon: [[0, 0], [2688, 0], [2688, 1520], [0, 1520]]
   - camera_id: 2
     name: Prep area 2
     type: prep
-    polygon: [[0, 0], [1920, 0], [1920, 1080], [0, 1080]]
+    polygon: [[0, 0], [2688, 0], [2688, 1520], [0, 1520]]
   - camera_id: 1
     name: Waste bin
     type: waste
-    polygon: [[1500, 700], [1900, 700], [1900, 1060], [1500, 1060]]
+    polygon: [[1640, 620], [1980, 620], [1980, 1060], [1640, 1060]]
+  - camera_id: 2
+    name: Outside (customer side)
+    type: ignore
+    polygon: [[1600, 0], [2545, 0], [2535, 220], [2486, 555], [2461, 657], [2438, 676], [2362, 655], [2273, 628], [2183, 580], [2080, 555], [1755, 462], [1600, 413]]
 
 rules:
   defaults:
@@ -51,7 +54,7 @@ rules:
     cooldown_s: 60
     severity: Medium
   overrides:                 # per-hazard changes to the defaults
-    H-04: {min_ratio: 0.30}
+    H-04: {min_ratio: 0.30, window_s: 10, end_gap_s: 60, cooldown_s: 300}   # a phone lying in one place -> one incident
   zone_type:                 # which zone type each hazard's rule is attached to
     H-01: prep
     H-04: prep
