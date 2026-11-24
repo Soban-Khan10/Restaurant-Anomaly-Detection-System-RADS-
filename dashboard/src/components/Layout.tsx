@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABEL, TIME_ZONE } from "../lib/format";
+import { onSoundStateChange, playAlertSound, soundBlocked } from "../lib/sound";
 import { useLive, type Connection } from "../live/LiveContext";
 import { NAV, navFor } from "../nav";
 import { LogoutIcon, MenuIcon, SoundOffIcon, SoundOnIcon } from "./Icons";
@@ -24,6 +25,40 @@ function Clock() {
       {new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, weekday: "short", day: "numeric", month: "short",
         hour: "2-digit", minute: "2-digit", hour12: false }).format(now)}
     </span>
+  );
+}
+
+/** Sound on/off. Switching it on plays the chime once, so you know it works. While the browser still blocks
+ *  sound (page not clicked yet since it was opened), a "Click to allow sound" prompt is shown. */
+function SoundControl({ soundOn, setSoundOn }: { soundOn: boolean; setSoundOn: (on: boolean) => void }) {
+  const blocked = useSyncExternalStore(onSoundStateChange, soundBlocked);
+  const warn = soundOn && blocked;
+  return (
+    <div className="flex items-center gap-1">
+      {warn && (
+        <button type="button" onClick={() => playAlertSound()}
+          className="hidden rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200
+            ring-inset hover:bg-amber-100 sm:inline-flex"
+          title="Browsers only play sound after you click on the page">
+          Click to allow sound
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setSoundOn(!soundOn);
+          if (!soundOn) playAlertSound();
+        }}
+        className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+        aria-pressed={soundOn}
+        aria-label={soundOn ? "Turn alert sound off" : "Turn alert sound on"}
+        title={!soundOn ? "Alert sound is off" : warn ? "Click anywhere on the page to allow the alert sound"
+          : "Alert sound is on"}
+      >
+        {soundOn ? <SoundOnIcon className="h-5 w-5" /> : <SoundOffIcon className="h-5 w-5 text-slate-400" />}
+        {warn && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />}
+      </button>
+    </div>
   );
 }
 
@@ -117,16 +152,7 @@ export default function Layout() {
             <span className={`h-2 w-2 rounded-full ${conn.dot}`} />
             {conn.label}
           </span>
-          <button
-            type="button"
-            onClick={() => setSoundOn(!soundOn)}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-            aria-pressed={soundOn}
-            aria-label={soundOn ? "Turn alert sound off" : "Turn alert sound on"}
-            title={soundOn ? "Alert sound is on" : "Alert sound is off"}
-          >
-            {soundOn ? <SoundOnIcon className="h-5 w-5" /> : <SoundOffIcon className="h-5 w-5 text-slate-400" />}
-          </button>
+          <SoundControl soundOn={soundOn} setSoundOn={setSoundOn} />
         </div>
       </header>
 

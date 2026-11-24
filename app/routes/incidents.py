@@ -67,14 +67,25 @@ class EvidenceOut(BaseModel):
     image_url: str
 
 
+class ReviewEvent(BaseModel):
+    at: str
+    user_id: int | None
+    user_name: str | None = Field(description="full name, or username if no full name")
+    old_status: str | None = Field(description="null when unknown (review recorded without history)")
+    new_status: str
+    note: str | None
+
+
 class IncidentDetail(IncidentOut):
     hazard: dict[str, Any]
-    rule: dict[str, Any]
+    rule: dict[str, Any] = Field(description="rule values in force when the incident started")
+    rule_changed_since: bool = Field(description="the rule has been edited after the incident started")
     camera: dict[str, Any]
     zone: dict[str, Any]
     evidence: list[EvidenceOut]
-    alerts: list[dict[str, Any]]
+    alerts: list[dict[str, Any]] = Field(description="alerts rows + recipient_name (null for group chats)")
     reviewed_by_user: dict[str, Any] | None
+    history: list[ReviewEvent] = Field(description="every review, oldest first (for the timeline)")
 
 
 class ReviewIn(BaseModel):
@@ -126,12 +137,61 @@ def _json(value: str | None) -> Any:
         return value
 
 
+def _when(iso: str) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return None
+    return dt.replace(tzinfo=TZ) if dt.tzinfo is None else dt
+
+
+def _rule_at(db: Session, rule: dict[str, Any], start_time: str) -> tuple[dict[str, Any], bool]:
+    """The rule's values when the incident started: undo, newest first, every rule_update made after that.
+    Every rule change goes through /api/rules, which writes {field: {old, new}} to audit_log."""
+    start = _when(start_time)
+    later = []
+    for r in db.execute(text("SELECT details, created_at FROM audit_log WHERE action = 'rule_update' "
+                             "AND target_type = 'rule' AND target_id = :r ORDER BY log_id DESC"),
+                        {"r": rule.get("rule_id")}).mappings():
+        changed = _when(r["created_at"])
+        if start is not None and changed is not None and changed > start:
+            later.append(_json(r["details"]) or {})
+    values = dict(rule)
+    for details in later:
+        for field, change in details.items():
+            if field in values and isinstance(change, dict) and "old" in change:
+                values[field] = change["old"]
+    return values, bool(later)
+
+
+def _history(db: Session, inc: dict[str, Any]) -> list[ReviewEvent]:
+    rows = db.execute(text(
+        "SELECT a.created_at, a.user_id, a.details, COALESCE(u.full_name, u.username) AS user_name "
+        "FROM audit_log a LEFT JOIN users u ON u.user_id = a.user_id "
+        "WHERE a.action = 'incident_review' AND a.target_type = 'incident' AND a.target_id = :i "
+        "ORDER BY a.log_id"), {"i": inc["incident_id"]}).mappings().all()
+    events = []
+    for r in rows:
+        d = _json(r["details"]) or {}
+        st = d.get("status") if isinstance(d.get("status"), dict) else {}
+        events.append(ReviewEvent(at=r["created_at"], user_id=r["user_id"], user_name=r["user_name"],
+                                  old_status=st.get("old"), new_status=st.get("new") or "", note=d.get("note")))
+    if not events and inc["reviewed_at"] is not None:
+        # Reviewed without an audit row (e.g. written directly to the database): show the last review we know.
+        name = db.execute(text("SELECT COALESCE(full_name, username) FROM users WHERE user_id = :u"),
+                          {"u": inc["reviewed_by"]}).scalar()
+        events.append(ReviewEvent(at=inc["reviewed_at"], user_id=inc["reviewed_by"], user_name=name,
+                                  old_status=None, new_status=inc["status"], note=inc["review_note"]))
+    return events
+
+
 def incident_detail(db: Session, incident_id: int) -> IncidentDetail:
     inc = load_incident(db, incident_id)
     one = lambda q, **p: dict(db.execute(text(q), p).mappings().first() or {})  # noqa: E731
 
     hazard = one("SELECT * FROM hazards WHERE hazard_id = :h", h=inc["hazard_id"])
-    rule = one("SELECT * FROM rules WHERE rule_id = :r", r=inc["rule_id"])
+    rule, rule_changed = _rule_at(db, one("SELECT * FROM rules WHERE rule_id = :r", r=inc["rule_id"]),
+                                  inc["start_time"])
     # Never rtsp_url: it contains the camera password.
     camera = one("SELECT camera_id, name, enabled, target_fps, frame_width, frame_height "
                  "FROM cameras WHERE camera_id = :c", c=inc["camera_id"])
@@ -147,13 +207,16 @@ def incident_detail(db: Session, incident_id: int) -> IncidentDetail:
                             {"i": incident_id}).mappings()
     ]
     alerts = [dict(a) for a in db.execute(
-        text("SELECT * FROM alerts WHERE incident_id = :i ORDER BY alert_id"), {"i": incident_id}).mappings()]
+        text("SELECT a.*, COALESCE(u.full_name, u.username) AS recipient_name FROM alerts a "
+             "LEFT JOIN users u ON u.user_id = a.user_id WHERE a.incident_id = :i ORDER BY a.alert_id"),
+        {"i": incident_id}).mappings()]
     reviewer = None
     if inc["reviewed_by"] is not None:
         reviewer = one("SELECT user_id, username, full_name FROM users WHERE user_id = :u", u=inc["reviewed_by"])
 
-    return IncidentDetail(**inc, hazard=hazard, rule=rule, camera=camera, zone=zone,
-                          evidence=evidence, alerts=alerts, reviewed_by_user=reviewer or None)
+    return IncidentDetail(**inc, hazard=hazard, rule=rule, rule_changed_since=rule_changed, camera=camera,
+                          zone=zone, evidence=evidence, alerts=alerts, reviewed_by_user=reviewer or None,
+                          history=_history(db, inc))
 
 
 # ---------------------------------------------------------------- routes

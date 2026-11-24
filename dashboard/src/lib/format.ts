@@ -41,6 +41,43 @@ export function formatDateTime(iso: string): string {
   return dateTimeFmt.format(new Date(iso));
 }
 
+const dateTimeSecondsFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE, day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  second: "2-digit", hour12: false,
+});
+
+/** "24 Nov 2026, 14:05:31" */
+export function formatDateTimeSeconds(iso: string): string {
+  return dateTimeSecondsFmt.format(new Date(iso));
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A calendar day "2026-11-24" -> "24 Nov 2026" (no time zone involved). */
+export function formatDay(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : day;
+}
+
+/** Number of days from `from` to `to`, both included ("2026-11-18".."2026-11-24" -> 7). */
+export function daysInclusive(from: string, to: string): number {
+  return Math.round((Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86_400_000) + 1;
+}
+
+/** 0.784 -> "78%" */
+export function formatPercent(fraction: number | null | undefined): string {
+  return fraction == null ? "—" : `${Math.round(fraction * 100)}%`;
+}
+
+/** Rule durations: 5 -> "5 s", 1.5 -> "1.5 s", 300 -> "5 min", 90 -> "1 min 30 s". */
+export function formatSeconds(seconds: number): string {
+  const s = Math.round(seconds * 10) / 10;
+  if (s < 60) return `${s} s`;
+  const min = Math.floor(s / 60);
+  const rest = Math.round((s - min * 60) * 10) / 10;
+  return rest ? `${min} min ${rest} s` : `${min} min`;
+}
+
 /** "14:05" */
 export function formatTime(iso: string): string {
   return timeFmt.format(new Date(iso));

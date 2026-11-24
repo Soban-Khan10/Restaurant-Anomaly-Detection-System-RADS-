@@ -5,9 +5,9 @@ import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { ToastProvider } from "./components/Toasts";
 import "./index.css";
-import { unlockAudioOnFirstGesture } from "./lib/sound";
+import { unlockAudioOnGesture } from "./lib/sound";
 
-unlockAudioOnFirstGesture();
+unlockAudioOnGesture();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

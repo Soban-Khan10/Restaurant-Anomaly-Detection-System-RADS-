@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ChevronLeftIcon, ChevronRightIcon } from "../components/Icons";
-import { Card, EmptyState, ErrorState, OngoingBadge, SeverityBadge, Spinner, StatusBadge } from "../components/ui";
+import {
+  Card, ChoicePill, EmptyState, ErrorState, OngoingBadge, SeverityBadge, Spinner, StatusBadge,
+} from "../components/ui";
 import {
   SEVERITIES, STATUS_LABEL, STATUS_ORDER, formatDateTime, formatDuration, pakistanDate, pakistanDateDaysAgo,
 } from "../lib/format";
@@ -14,18 +16,14 @@ const PAGE_SIZES = [25, 50, 100];
 
 function QuickRange({ label, from, to, active, onPick }:
   { label: string; from: string; to: string; active: boolean; onPick: (from: string, to: string) => void }) {
-  return (
-    <button type="button" onClick={() => onPick(from, to)} aria-pressed={active}
-      className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition ${
-        active ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50"}`}>
-      {label}
-    </button>
-  );
+  return <ChoicePill label={label} active={active} onClick={() => onPick(from, to)} />;
 }
 
 export default function IncidentsPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const back = { back: location.pathname + location.search }; // "Back to incidents" keeps these filters
   const [newArrived, setNewArrived] = useState(false);
 
   const page = Math.max(1, Number(params.get("page")) || 1);
@@ -146,7 +144,7 @@ export default function IncidentsPage() {
             <EmptyState title={anyFilter ? "No incidents match these filters" : "No incidents recorded yet"}
               hint={anyFilter ? "Try a longer period or clear some filters." : undefined} />
           ) : (
-            <div className={`overflow-x-auto transition-opacity ${result.loading ? "opacity-60" : ""}`}>
+            <div className={`relative overflow-x-auto transition-opacity ${result.loading ? "opacity-60" : ""}`}>
               <table className="w-full min-w-[56rem] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide
                   text-slate-500">
@@ -163,9 +161,9 @@ export default function IncidentsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {data.items.map((i) => (
                     <tr key={i.incident_id} className="cursor-pointer hover:bg-slate-50"
-                      onClick={() => navigate(`/incidents/${i.incident_id}`)}>
+                      onClick={() => navigate(`/incidents/${i.incident_id}`, { state: back })}>
                       <td className="whitespace-nowrap px-5 py-3 text-slate-700">
-                        <Link to={`/incidents/${i.incident_id}`} className="hover:underline"
+                        <Link to={`/incidents/${i.incident_id}`} state={back} className="hover:underline"
                           onClick={(e) => e.stopPropagation()}>
                           {formatDateTime(i.start_time)}
                         </Link>

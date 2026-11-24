@@ -100,6 +100,17 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
+/** A rounded on/off choice, e.g. "Today" / "Last 7 days". */
+export function ChoicePill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active}
+      className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition ${
+        active ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50"}`}>
+      {label}
+    </button>
+  );
+}
+
 /** The required reminder that the system's detections are decision support (SRS 4.2.3). */
 export function ReviewNote({ compact = false }: { compact?: boolean }) {
   return (

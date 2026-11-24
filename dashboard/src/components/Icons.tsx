@@ -48,3 +48,16 @@ export const InfoIcon = (p: IconProps) => (
 );
 export const ChevronLeftIcon = (p: IconProps) => <Icon {...p}><path d="m15 5-7 7 7 7" /></Icon>;
 export const ChevronRightIcon = (p: IconProps) => <Icon {...p}><path d="m9 5 7 7-7 7" /></Icon>;
+export const ArrowLeftIcon = (p: IconProps) => <Icon {...p}><path d="M19 12H5" /><path d="m11 6-6 6 6 6" /></Icon>;
+export const ExpandIcon = (p: IconProps) => (
+  <Icon {...p}><path d="M14 4h6v6" /><path d="M10 20H4v-6" /><path d="m20 4-7 7" /><path d="m4 20 7-7" /></Icon>
+);
+export const ImageOffIcon = (p: IconProps) => (
+  <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.5" />
+    <path d="m21 16-5-5-8 8" /><path d="m3 3 18 18" /></Icon>
+);
+export const DownloadIcon = (p: IconProps) => (
+  <Icon {...p}><path d="M12 4v11" /><path d="m7 10 5 5 5-5" /><path d="M5 20h14" /></Icon>
+);
+export const PlusIcon = (p: IconProps) => <Icon {...p}><path d="M12 5v14M5 12h14" /></Icon>;
+export const CheckIcon = (p: IconProps) => <Icon {...p}><path d="m5 12.5 4.5 4.5L19 7.5" /></Icon>;

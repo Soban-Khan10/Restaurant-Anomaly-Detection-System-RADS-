@@ -7,6 +7,8 @@ export interface ApiState<T> {
   /** True while a request is running (old data stays visible meanwhile). */
   loading: boolean;
   reload: () => void;
+  /** Replace the data with a newer copy the caller already has (e.g. what a save returned). */
+  mutate: (data: T) => void;
 }
 
 /** GET `path` with `query` (path null = don't fetch). Re-fetches when the path or query changes, or on
@@ -38,5 +40,9 @@ export function useApi<T>(path: string | null, query?: RequestOptions["query"]):
   }, [path, queryKey, tick]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  return { data, error, loading, reload };
+  const mutate = useCallback((d: T) => {
+    setData(d);
+    setError(null);
+  }, []);
+  return { data, error, loading, reload, mutate };
 }

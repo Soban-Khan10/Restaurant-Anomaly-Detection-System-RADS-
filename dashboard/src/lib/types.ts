@@ -112,3 +112,79 @@ export type LiveMessage =
   | { type: "incident.new"; incident: Incident }
   | { type: "incident.closed"; incident_id: number }
   | CameraStatusMessage;
+
+// Incident detail (GET /api/incidents/{id}; PATCH .../review returns the same shape)
+export type ReviewStatus = Exclude<IncidentStatus, "New">;
+
+export interface ReviewEvent {
+  at: string;
+  user_id: number | null;
+  user_name: string | null;
+  old_status: IncidentStatus | null;
+  new_status: IncidentStatus;
+  note: string | null;
+}
+
+export interface Evidence {
+  evidence_id: number;
+  kind: "snapshot" | "clip";
+  file_path: string;
+  captured_at: string;
+  detections: unknown;
+  deleted: boolean;
+  deleted_at: string | null;
+  image_url: string;
+}
+
+export interface RuleValues {
+  rule_id: number;
+  hazard_id: string;
+  camera_id: number;
+  enabled: boolean | number;
+  conf_threshold: number;
+  window_s: number;
+  min_ratio: number;
+  end_gap_s: number;
+  cooldown_s: number;
+  severity: Severity;
+}
+
+export interface IncidentAlert {
+  alert_id: number;
+  incident_id: number;
+  user_id: number | null;
+  recipient_name: string | null;
+  channel: Alert["channel"];
+  kind: Alert["kind"];
+  sent_at: string;
+  status: Alert["status"];
+  error: string | null;
+}
+
+export interface IncidentDetail extends Incident {
+  hazard: Hazard & { violation_class: string; compliant_class: string | null };
+  rule: RuleValues;
+  rule_changed_since: boolean;
+  camera: { camera_id: number; name: string };
+  zone: { zone_id: number; name: string; type: "prep" | "waste" | "ignore" };
+  evidence: Evidence[];
+  alerts: IncidentAlert[];
+  reviewed_by_user: { user_id: number; username: string; full_name: string | null } | null;
+  history: ReviewEvent[];
+}
+
+// Reports (GET/POST /api/reports)
+export type ReportFormat = "pdf" | "xlsx";
+
+export interface Report {
+  report_id: number;
+  created_by: number;
+  created_by_name: string;
+  period_start: string;
+  period_end: string;
+  format: ReportFormat;
+  file_name: string;
+  created_at: string;
+  download_url: string;
+  available: boolean;
+}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { navFor, rolesFor } from "../nav";
-import { formatDateTime, formatDuration, formatTime, pakistanDate, pakistanDateDaysAgo, timeAgo } from "./format";
+import {
+  daysInclusive, formatDateTime, formatDateTimeSeconds, formatDay, formatDuration, formatPercent, formatSeconds,
+  formatTime, pakistanDate, pakistanDateDaysAgo, timeAgo,
+} from "./format";
 
 describe("Pakistan time", () => {
   it("shows server times in Asia/Karachi whatever the browser's zone", () => {
@@ -43,5 +46,17 @@ describe("role-based menu (roles table)", () => {
     expect(rolesFor("/users")).toEqual(["Admin"]);
     expect(rolesFor("/reports")).toEqual(["Admin", "Manager"]);
     expect(rolesFor("/incidents/42")).toEqual(["Admin", "Manager", "Technical"]);
+  });
+});
+
+describe("incident detail and report labels", () => {
+  it("formats seconds, percentages and calendar days", () => {
+    expect(formatDateTimeSeconds("2026-11-24T09:05:31Z")).toBe("24 Nov 2026, 14:05:31");
+    expect(formatDay("2026-11-05")).toBe("5 Nov 2026");
+    expect(daysInclusive("2026-11-18", "2026-11-24")).toBe(7);
+    expect(daysInclusive("2026-11-24", "2026-11-24")).toBe(1);
+    expect(formatPercent(0.784)).toBe("78%");
+    expect(formatPercent(null)).toBe("—");
+    expect([5, 1.5, 60, 90, 300].map(formatSeconds)).toEqual(["5 s", "1.5 s", "1 min", "1 min 30 s", "5 min"]);
   });
 });
