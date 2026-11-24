@@ -45,6 +45,17 @@ def test_perf_window_summary_and_reset():
     assert c2["lag_ms"]["mean"] is None
     assert s["busy_pct"] == pytest.approx(100 * 0.55 / 10, abs=0.05)  # 550 ms busy in 10 s
 
+    assert c1["post_ms"]["mean"] is None  # not given
+    w.record(2, detect_ms=30.0, total_ms=33.0, lag_ms=60.0, post_ms=2.0)
+    w.record(2, detect_ms=30.0, total_ms=33.0, lag_ms=60.0, post_ms=4.0)
+    w.note_tracks(2, active=2, new_ids=2)
+    w.note_tracks(2, active=3, new_ids=1)
+    w.note_tracks(2, active=1, new_ids=0)
+    c2 = w.summary(now=110.0)["cams"][2]
+    assert c2["post_ms"]["mean"] == 3.0
+    assert c2["tracks_max_active"] == 3 and c2["new_track_ids"] == 3
+    w.cams[2] = type(w.cams[2])()  # drop cam 2 again so the busy numbers below stay as before
+
     w.add_gui(0.5)
     s = w.summary(now=110.0)
     assert s["gui_pct"] == pytest.approx(5.0)

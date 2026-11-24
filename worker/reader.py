@@ -23,6 +23,7 @@ from shared.contract import CameraStatus
 log = logging.getLogger(__name__)
 
 DEFAULT_FILE_FPS = 25.0
+MAX_BEHIND_S = 1.0  # a file reader further behind real time than this re-syncs its clock
 RTSP_OPEN_TIMEOUT_MS = 10_000
 RTSP_READ_TIMEOUT_MS = 5_000
 
@@ -54,6 +55,7 @@ class CameraReader(threading.Thread):
         self.status: CameraStatus = CameraStatus.OFFLINE
         self.frames = 0          # frames read since start
         self.loops = 0           # times a file was replayed from the start
+        self.dropped = 0         # file frames skipped because the reader was behind real time
         self.reconnects = 0      # times the reader went to `reconnecting`
         self.width: int | None = None
         self.height: int | None = None
@@ -76,7 +78,7 @@ class CameraReader(threading.Thread):
 
     @property
     def fps(self) -> float:
-        """Measured input frame rate over the last ~50 frames (0 if none recently)."""
+        """Published frames per second over the last ~50 frames (0 if none recently). Dropped frames don't count."""
         with self._lock:
             t = list(self._times)
         if len(t) < 2 or time.perf_counter() - t[-1] > 2.0:
@@ -111,8 +113,8 @@ class CameraReader(threading.Thread):
             log.warning("cam%d: reconnecting in %.0f s", self.camera_id, self.retry_s)
             self._stop_event.wait(self.retry_s)
         self.status = CameraStatus.OFFLINE
-        log.info("cam%d: reader stopped (%d frames, %d loops, %d reconnects)",
-                 self.camera_id, self.frames, self.loops, self.reconnects)
+        log.info("cam%d: reader stopped (%d frames, %d dropped, %d loops, %d reconnects)",
+                 self.camera_id, self.frames, self.dropped, self.loops, self.reconnects)
 
     def _open(self) -> bool:
         if self.is_file:
@@ -152,15 +154,28 @@ class CameraReader(threading.Thread):
         if not fps or fps != fps or fps <= 0 or fps > 240:
             fps = DEFAULT_FILE_FPS
         self.source_fps = fps
+        period = 1.0 / fps
         t0 = time.perf_counter()
         i = 0                 # frame index in the continuous (looped) stream
         in_pass = 0           # frames read since the file was (re)opened
         while not self._stop_event.is_set():
-            target = t0 + i / fps
-            dt = target - time.perf_counter()
-            if dt > 0 and self._stop_event.wait(dt):
+            target = t0 + i * period
+            now = time.perf_counter()
+            if target - now > 0 and self._stop_event.wait(target - now):
                 return
-            ok, img = self._cap.read()
+            ok = self._cap.grab()  # decode only; the BGR copy is made below, and only for frames we publish
+            if ok and time.perf_counter() > target + period:
+                # Behind real time (e.g. CPU contention): this frame's slot is over, so drop it like a live
+                # camera would, instead of publishing old frames faster than 25 FPS to catch up.
+                self.dropped += 1
+                in_pass += 1
+                i += 1
+                behind = time.perf_counter() - (t0 + i * period)
+                if behind > MAX_BEHIND_S:  # hopelessly behind: skip ahead to "now"
+                    log.warning("cam%d: file reader %.1f s behind, skipping ahead", self.camera_id, behind)
+                    t0 += behind
+                continue
+            img = self._cap.retrieve()[1] if ok else None
             if not ok or img is None:
                 if in_pass == 0:
                     log.warning("cam%d: file gave no frames", self.camera_id)

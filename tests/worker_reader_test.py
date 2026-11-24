@@ -96,3 +96,56 @@ def test_stop_is_quick_during_retry_wait(tmp_path):
 def test_redact_hides_credentials():
     assert redact("rtsp://admin:pw@192.168.1.64:554/x") == "rtsp://***@192.168.1.64:554/x"
     assert redact("/path/to/clip.mp4") == "/path/to/clip.mp4"
+
+
+@pytest.fixture(scope="module")
+def clip25(tmp_path_factory):
+    """A 64x48, 25 FPS, 4 s video – the same frame rate as the cameras."""
+    path = tmp_path_factory.mktemp("clip25") / "c25.mp4"
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 25, (64, 48))
+    for i in range(100):
+        vw.write(np.full((48, 64, 3), i * 2, dtype=np.uint8))
+    vw.release()
+    return path
+
+
+def test_file_reader_reports_about_25_fps(clip25):
+    r = CameraReader(1, clip25)
+    r.start()
+    try:
+        assert r.first_frame.wait(5)
+        time.sleep(2.5)
+        assert r.fps == pytest.approx(25, abs=1.5)
+        assert r.dropped == 0
+    finally:
+        r.stop(timeout=3)
+
+
+class _StallOnce(CameraReader):
+    """Simulates CPU contention: the reader thread is blocked for 1 s once."""
+    stalled = False
+
+    def _publish(self, image, capture_t):
+        if not self.stalled and self.frames == 10:
+            self.stalled = True
+            time.sleep(1.0)
+        super()._publish(image, capture_t)
+
+
+def test_file_reader_that_falls_behind_skips_instead_of_speeding_up(clip25):
+    r = _StallOnce(1, clip25)
+    r.start()
+    try:
+        assert r.first_frame.wait(5)
+        assert _wait(lambda: r.stalled, 3)
+        samples = []
+        for _ in range(12):  # 3 s after the stall
+            time.sleep(0.25)
+            samples.append(r.fps)
+        assert max(samples) < 27.5            # no catch-up burst (the old reader showed ~48)
+        assert r.dropped >= 15                # ~1 s of frames skipped, like a live camera
+        f1 = r.latest()
+        time.sleep(0.2)
+        assert r.latest().capture_t - f1.capture_t == pytest.approx(0.2, abs=0.08)  # back in real time
+    finally:
+        r.stop(timeout=3)
