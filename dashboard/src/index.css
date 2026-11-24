@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+
+  --color-brand-50: #eef6fb;
+  --color-brand-100: #d5e8f4;
+  --color-brand-200: #abd0e8;
+  --color-brand-300: #77b1d6;
+  --color-brand-400: #4790c0;
+  --color-brand-500: #2c75a6;
+  --color-brand-600: #1f5f8b;
+  --color-brand-700: #1a4d71;
+  --color-brand-800: #17405d;
+  --color-brand-900: #14344b;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-slate-50);
+    color: var(--color-slate-800);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium
+      text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5
+      text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed
+      disabled:opacity-50;
+  }
+  .field-label {
+    @apply mb-1 block text-xs font-medium text-slate-600;
+  }
+  .field {
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm
+      focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.toast-in {
+  animation: toast-in 0.2s ease-out;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in,
+  .pulse-dot {
+    animation: none;
+  }
+}

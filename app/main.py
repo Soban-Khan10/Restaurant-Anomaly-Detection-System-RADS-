@@ -11,14 +11,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
 from app import alerts, retention, ws
-from app.routes import admin, auth, cameras, evidence, incidents, internal, reports, rules, users, zones
+from app.routes import (admin, auth, cameras, evidence, incidents, internal, lookups, reports, rules, users,
+                        zones)
 from shared.config import Settings, get_settings
 from shared.db import get_engine
 
 log = logging.getLogger("rads.app")
 
-# Vite dev server
+# Vite dev server (dashboard/, `npm run dev` on port 5173)
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# Response headers the dashboard's JavaScript may read (browsers hide non-standard headers otherwise).
+EXPOSED_HEADERS = ["X-RADS-Worker-Reload", "Content-Disposition"]
 
 
 def add_jobs(scheduler: BackgroundScheduler, Session_: sessionmaker, s: Settings) -> None:
@@ -72,10 +75,12 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=EXPOSED_HEADERS,
     )
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(incidents.router)
+    app.include_router(lookups.router)
     app.include_router(evidence.router)
     app.include_router(cameras.router)
     app.include_router(zones.router)

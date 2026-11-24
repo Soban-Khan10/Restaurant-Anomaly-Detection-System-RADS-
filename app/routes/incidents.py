@@ -202,6 +202,46 @@ def list_incidents(
     return IncidentPage(items=[IncidentOut(**r) for r in rows], total=total, page=page, page_size=page_size)
 
 
+class HazardCount(BaseModel):
+    hazard_id: str
+    name: str
+    count: int
+
+
+class IncidentSummary(BaseModel):
+    date_from: date
+    date_to: date
+    total: int
+    unreviewed: int
+    by_hazard: list[HazardCount] = Field(description="every hazard, including those with 0 incidents")
+    by_status: dict[str, int]
+
+
+# Declared before /{incident_id}, which would otherwise try to read "summary" as an incident id.
+@router.get("/summary", response_model=IncidentSummary)
+def incident_summary(
+    date_from: date | None = Query(None, description="first day (YYYY-MM-DD); default today (Pakistan time)"),
+    date_to: date | None = Query(None, description="last day, included; default = date_from"),
+    _: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IncidentSummary:
+    """Counts for the dashboard overview: incidents per hazard and per status in a day range."""
+    start = date_from or datetime.now(TZ).date()
+    end = date_to or start
+    if end < start:
+        raise HTTPException(http.HTTP_422_UNPROCESSABLE_CONTENT, "date_to must not be before date_from")
+    p = {"lo": datetime.combine(start, time(), TZ).isoformat(timespec="seconds"),
+         "hi": datetime.combine(end + timedelta(days=1), time(), TZ).isoformat(timespec="seconds")}
+    in_range = "i.start_time >= :lo AND i.start_time < :hi"
+    by_hazard = [HazardCount(hazard_id=r[0], name=r[1], count=r[2]) for r in db.execute(text(
+        f"SELECT h.hazard_id, h.name, COUNT(i.incident_id) FROM hazards h LEFT JOIN incidents i "
+        f"ON i.hazard_id = h.hazard_id AND {in_range} GROUP BY h.hazard_id ORDER BY h.hazard_id"), p)]
+    counts = dict(db.execute(text(f"SELECT i.status, COUNT(*) FROM incidents i WHERE {in_range} GROUP BY 1"), p).all())
+    by_status = {s.value: counts.get(s.value, 0) for s in IncidentStatus}
+    return IncidentSummary(date_from=start, date_to=end, total=sum(by_status.values()),
+                           unreviewed=by_status[IncidentStatus.NEW.value], by_hazard=by_hazard, by_status=by_status)
+
+
 @router.get("/{incident_id}", response_model=IncidentDetail)
 def get_incident(incident_id: int, _: CurrentUser = Depends(get_current_user),
                  db: Session = Depends(get_db)) -> IncidentDetail:

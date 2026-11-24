@@ -1,0 +1,45 @@
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router";
+import { useAuth } from "./auth/AuthContext";
+import Layout from "./components/Layout";
+import { Spinner } from "./components/ui";
+import { LiveProvider } from "./live/LiveContext";
+import { rolesFor } from "./nav";
+import IncidentsPage from "./pages/IncidentsPage";
+import LoginPage from "./pages/LoginPage";
+import OverviewPage from "./pages/OverviewPage";
+import { ComingSoon, IncidentDetailPlaceholder, NoAccess, NotFound } from "./pages/Placeholders";
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { status } = useAuth();
+  const location = useLocation();
+  if (status === "checking") {
+    return <div className="flex min-h-screen items-center justify-center"><Spinner label="Opening RADS…" /></div>;
+  }
+  if (status === "signed-out") return <Navigate to="/login" replace state={{ from: location }} />;
+  return <>{children}</>;
+}
+
+/** Shows the page only to the roles that have it in their menu (the server checks again on every request). */
+function RoleGate({ path, children }: { path: string; children: ReactNode }) {
+  const { hasRole } = useAuth();
+  return hasRole(...rolesFor(path)) ? <>{children}</> : <NoAccess />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth><LiveProvider><Layout /></LiveProvider></RequireAuth>}>
+        <Route index element={<OverviewPage />} />
+        <Route path="incidents" element={<IncidentsPage />} />
+        <Route path="incidents/:id" element={<IncidentDetailPlaceholder />} />
+        <Route path="cameras" element={<RoleGate path="/cameras"><ComingSoon title="Cameras & areas" /></RoleGate>} />
+        <Route path="rules" element={<RoleGate path="/rules"><ComingSoon title="Detection rules" /></RoleGate>} />
+        <Route path="reports" element={<RoleGate path="/reports"><ComingSoon title="Reports" /></RoleGate>} />
+        <Route path="users" element={<RoleGate path="/users"><ComingSoon title="Users" /></RoleGate>} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
+  );
+}
