@@ -1,0 +1,235 @@
+"""Alerts: dashboard alert rows, WhatsApp / Telegram messages, and the 10-minute escalation job.
+
+* Every new incident  -> one `alerts` row (channel dashboard, kind first), then a short text to every active
+  Manager over each configured channel.
+* Escalation (every minute) -> incident still `New` 10 min after start and `escalated_at` empty: set escalated_at,
+  `alerts` row (dashboard, kind escalation), text to every active Admin.
+* Each external send gets its own `alerts` row: `sent`, or `failed` with the error. A failed send never raises.
+
+Channels (configured in .env; nothing configured -> dashboard only):
+  WhatsApp  WHATSAPP_TOKEN + WHATSAPP_PHONE_ID (Meta Cloud API) -> each recipient's users.phone
+  Telegram  TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID               -> that chat (e.g. a staff group); a bot cannot
+            message a phone number, so recipients are chat ids, not users. TELEGRAM_CHAT_ID may hold several ids
+            separated by commas.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Iterable, Protocol
+
+import httpx
+from sqlalchemy import text
+from sqlalchemy.orm import Session, sessionmaker
+
+from shared.config import Settings, get_settings
+from shared.contract import TZ, AlertChannel, AlertKind, AlertStatus, IncidentStatus, RoleName, now_iso
+
+log = logging.getLogger("rads.app.alerts")
+
+ESCALATE_AFTER = timedelta(minutes=10)
+HTTP_TIMEOUT_S = 10.0
+WHATSAPP_API = "https://graph.facebook.com/v21.0"
+TELEGRAM_API = "https://api.telegram.org"
+ERROR_MAX = 500
+
+
+# ---------------------------------------------------------------- senders
+
+@dataclass(frozen=True)
+class Recipient:
+    user_id: int | None
+    address: str
+
+
+class Sender(Protocol):
+    channel: AlertChannel
+
+    def recipients(self, users: list[dict[str, Any]]) -> list[Recipient]: ...
+    def send(self, address: str, message: str) -> None: ...  # raises on failure
+
+
+class SendError(Exception):
+    pass
+
+
+def _post(client: httpx.Client, url: str, secret: str, **kw: Any) -> None:
+    """POST and raise SendError with a message that never contains the secret (Telegram puts it in the URL)."""
+    try:
+        r = client.post(url, timeout=HTTP_TIMEOUT_S, **kw)
+    except httpx.HTTPError as e:
+        raise SendError(f"{type(e).__name__}: {e}".replace(secret, "***")) from None
+    if not r.is_success:
+        raise SendError(f"HTTP {r.status_code}: {r.text[:300]}".replace(secret, "***"))
+
+
+class WhatsAppSender:
+    """Meta WhatsApp Cloud API. Note: free-form text is only delivered inside a 24 h conversation window;
+    outside it Meta requires an approved template (the error is recorded in alerts.error)."""
+    channel = AlertChannel.WHATSAPP
+
+    def __init__(self, token: str, phone_id: str, client: httpx.Client | None = None):
+        self.token, self.phone_id = token, phone_id
+        self.client = client or httpx.Client()
+
+    def recipients(self, users: list[dict[str, Any]]) -> list[Recipient]:
+        out = []
+        for u in users:
+            digits = re.sub(r"\D", "", u.get("phone") or "")
+            if digits:
+                out.append(Recipient(u["user_id"], digits))
+        return out
+
+    def send(self, address: str, message: str) -> None:
+        _post(self.client, f"{WHATSAPP_API}/{self.phone_id}/messages", self.token,
+              headers={"Authorization": f"Bearer {self.token}"},
+              json={"messaging_product": "whatsapp", "to": address, "type": "text",
+                    "text": {"preview_url": False, "body": message}})
+
+
+class TelegramSender:
+    channel = AlertChannel.TELEGRAM
+
+    def __init__(self, bot_token: str, chat_ids: list[str], client: httpx.Client | None = None):
+        self.bot_token, self.chat_ids = bot_token, chat_ids
+        self.client = client or httpx.Client()
+
+    def recipients(self, users: list[dict[str, Any]]) -> list[Recipient]:
+        return [Recipient(None, c) for c in self.chat_ids]
+
+    def send(self, address: str, message: str) -> None:
+        _post(self.client, f"{TELEGRAM_API}/bot{self.bot_token}/sendMessage", self.bot_token,
+              json={"chat_id": address, "text": message})
+
+
+def configured_senders(settings: Settings | None = None, telegram_chat_id: str | None = None) -> list[Sender]:
+    s = settings or get_settings()
+    chat = telegram_chat_id if telegram_chat_id is not None else os.environ.get("TELEGRAM_CHAT_ID", "")
+    senders: list[Sender] = []
+    if s.whatsapp_token and s.whatsapp_phone_id:
+        senders.append(WhatsAppSender(s.whatsapp_token, s.whatsapp_phone_id))
+    if s.telegram_bot_token:
+        chat_ids = [c.strip() for c in chat.split(",") if c.strip()]
+        if chat_ids:
+            senders.append(TelegramSender(s.telegram_bot_token, chat_ids))
+        else:
+            log.warning("TELEGRAM_BOT_TOKEN is set but TELEGRAM_CHAT_ID is empty; Telegram alerts are off")
+    return senders
+
+
+# ---------------------------------------------------------------- DB helpers
+
+def _incident_summary(db: Session, incident_id: int) -> dict[str, Any] | None:
+    row = db.execute(text(
+        "SELECT i.incident_id, i.hazard_id, h.name AS hazard_name, c.name AS camera_name, z.name AS zone_name, "
+        "i.start_time, i.severity, i.status FROM incidents i JOIN hazards h ON h.hazard_id = i.hazard_id "
+        "JOIN cameras c ON c.camera_id = i.camera_id JOIN zones z ON z.zone_id = i.zone_id "
+        "WHERE i.incident_id = :id"), {"id": incident_id}).mappings().first()
+    return dict(row) if row else None
+
+
+def _users_with_role(db: Session, roles: Iterable[RoleName]) -> list[dict[str, Any]]:
+    names = [r.value for r in roles]
+    params = {f"r{i}": n for i, n in enumerate(names)}
+    return [dict(r) for r in db.execute(text(
+        "SELECT u.user_id, u.username, u.phone FROM users u JOIN roles r ON r.role_id = u.role_id "
+        f"WHERE u.active = 1 AND r.name IN ({', '.join(':' + k for k in params)}) ORDER BY u.user_id"),
+        params).mappings()]
+
+
+def _insert_alert(db: Session, incident_id: int, channel: AlertChannel, kind: AlertKind, status: AlertStatus,
+                  user_id: int | None = None, error: str | None = None) -> None:
+    db.execute(text("INSERT INTO alerts (incident_id, user_id, channel, kind, sent_at, status, error) "
+                    "VALUES (:i, :u, :c, :k, :t, :s, :e)"),
+               {"i": incident_id, "u": user_id, "c": channel.value, "k": kind.value, "t": now_iso(),
+                "s": status.value, "e": error[:ERROR_MAX] if error else None})
+
+
+def format_message(inc: dict[str, Any], kind: AlertKind) -> str:
+    when = datetime.fromisoformat(inc["start_time"]).astimezone(TZ).strftime("%H:%M")
+    head = "RADS ESCALATION – not reviewed for 10 min" if kind == AlertKind.ESCALATION else "RADS alert"
+    return (f"{head}: {inc['hazard_id']} {inc['hazard_name']} at {inc['camera_name']} / {inc['zone_name']}, "
+            f"{when} ({inc['severity']}). Incident #{inc['incident_id']} – please check the dashboard.")
+
+
+# ---------------------------------------------------------------- first alert (called from /internal/incidents/new)
+
+def record_dashboard_alert(db: Session, incident_id: int) -> bool:
+    """Write the dashboard alert row for a new incident. Returns False if it already exists
+    (the worker retried message 2), so a retry never produces duplicate alerts or texts."""
+    exists = db.execute(text("SELECT 1 FROM alerts WHERE incident_id = :i AND channel = 'dashboard' "
+                             "AND kind = 'first'"), {"i": incident_id}).first()
+    if exists:
+        return False
+    _insert_alert(db, incident_id, AlertChannel.DASHBOARD, AlertKind.FIRST, AlertStatus.SENT)
+    db.commit()
+    return True
+
+
+def send_external(Session_: sessionmaker[Session], incident_id: int, kind: AlertKind,
+                  roles: Iterable[RoleName], senders: list[Sender] | None = None) -> int:
+    """Text every active user with one of `roles` over every configured channel, one alerts row per send.
+    Never raises. Returns the number of successful sends."""
+    try:
+        senders = configured_senders() if senders is None else senders
+        if not senders:
+            return 0
+        with Session_() as db:
+            inc = _incident_summary(db, incident_id)
+            if inc is None:
+                return 0
+            users = _users_with_role(db, roles)
+            message = format_message(inc, kind)
+            sent = 0
+            for sender in senders:
+                for rcpt in sender.recipients(users):
+                    try:
+                        sender.send(rcpt.address, message)
+                    except Exception as e:  # noqa: BLE001 – a failed send never breaks anything else
+                        log.warning("%s alert for incident %s failed: %s", sender.channel.value, incident_id, e)
+                        _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.FAILED, rcpt.user_id,
+                                      str(e) or type(e).__name__)
+                    else:
+                        sent += 1
+                        _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.SENT, rcpt.user_id)
+                    db.commit()
+            return sent
+    except Exception:  # noqa: BLE001
+        log.exception("sending %s alerts for incident %s failed", kind.value, incident_id)
+        return 0
+
+
+def send_first_alerts(Session_: sessionmaker[Session], incident_id: int, senders: list[Sender] | None = None) -> int:
+    return send_external(Session_, incident_id, AlertKind.FIRST, (RoleName.MANAGER,), senders)
+
+
+# ---------------------------------------------------------------- escalation job (every minute)
+
+def run_escalation(Session_: sessionmaker[Session], senders: list[Sender] | None = None,
+                   now: datetime | None = None) -> list[int]:
+    """Escalate incidents still `New` ESCALATE_AFTER after start. Returns the escalated incident ids."""
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    cutoff = (now - ESCALATE_AFTER).isoformat(timespec="seconds")
+    escalated: list[int] = []
+    with Session_() as db:
+        ids = [r[0] for r in db.execute(
+            text("SELECT incident_id FROM incidents WHERE status = :new AND escalated_at IS NULL "
+                 "AND start_time <= :cutoff ORDER BY incident_id"),
+            {"new": IncidentStatus.NEW.value, "cutoff": cutoff})]
+        for iid in ids:
+            # Conditional update: never escalate twice, and skip if it was reviewed in the meantime.
+            res = db.execute(text("UPDATE incidents SET escalated_at = :t WHERE incident_id = :i "
+                                  "AND escalated_at IS NULL AND status = :new"),
+                             {"t": now.isoformat(timespec="seconds"), "i": iid, "new": IncidentStatus.NEW.value})
+            if res.rowcount == 1:
+                _insert_alert(db, iid, AlertChannel.DASHBOARD, AlertKind.ESCALATION, AlertStatus.SENT)
+                escalated.append(iid)
+        db.commit()
+    for iid in escalated:
+        log.warning("incident %s escalated to Admins (still New after %s min)", iid,
+                    int(ESCALATE_AFTER.total_seconds() // 60))
+        send_external(Session_, iid, AlertKind.ESCALATION, (RoleName.ADMIN,), senders)
+    return escalated

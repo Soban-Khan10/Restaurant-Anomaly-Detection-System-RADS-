@@ -70,18 +70,28 @@ def get_current_user(
 ) -> CurrentUser:
     if creds is None or creds.scheme.lower() != "bearer":
         raise _UNAUTHORIZED
+    user = user_from_token(db, creds.credentials)
+    if user is None:
+        raise _UNAUTHORIZED
+    return user
+
+
+def user_from_token(db: Session, token: str) -> CurrentUser | None:
+    """The active user a JWT belongs to, or None if the token is invalid/expired or the user is inactive.
+
+    Role and active flag come from the DB, so deactivation or a role change applies immediately.
+    """
     try:
-        claims = decode_access_token(creds.credentials)
+        claims = decode_access_token(token)
     except TokenError:
-        raise _UNAUTHORIZED from None
-    # Role and active flag come from the DB, so deactivation or a role change applies immediately.
+        return None
     row = db.execute(
         text("SELECT u.user_id, u.username, u.full_name, u.active, r.name AS role "
              "FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = :id"),
         {"id": int(claims["sub"])},
     ).mappings().first()
     if row is None or not row["active"]:
-        raise _UNAUTHORIZED
+        return None
     return CurrentUser(row["user_id"], row["username"], RoleName(row["role"]), row["full_name"])
 
 

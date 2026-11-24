@@ -90,7 +90,8 @@ def test_only_worker_columns_written(ctx):
     w.close_due()
     inc = ctx.sql("SELECT * FROM incidents WHERE incident_id = :i", i=iid)[0]
     assert inc["reviewed_by"] is None and inc["reviewed_at"] is None and inc["escalated_at"] is None
-    assert ctx.sql("SELECT COUNT(*) AS n FROM alerts")[0]["n"] == 0
+    # The only alert row is the app's dashboard alert, written when message 2 arrived.
+    assert ctx.sql("SELECT channel, kind FROM alerts") == [{"channel": "dashboard", "kind": "first"}]
 
 
 def test_run_loop_with_count(ctx):

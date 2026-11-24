@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.routes import internal
+from app import ws
 from app_helpers import INTERNAL, ctx  # noqa: F401  (ctx is a fixture)
 from shared.contract import INTERNAL_HEADER, now_iso
 
@@ -50,7 +50,7 @@ def test_heartbeat_kept_in_memory_and_writes_nothing(ctx):
     body = {"camera_id": 2, "status": "reconnecting", "fps": None, "ts": "2026-12-02T14:05:31+05:00"}
     r = ctx.local.post("/internal/heartbeat", json=body, headers=INTERNAL)
     assert r.status_code == 200 and r.json() == {"ok": True}
-    assert internal.LAST_HEARTBEAT[2].status == "reconnecting"
+    assert ws.cameras.last[2][0].status == "reconnecting"
     assert ctx.sql("SELECT COUNT(*) AS n FROM camera_health")[0]["n"] == 0
     assert ctx.sql("SELECT COUNT(*) AS n FROM audit_log")[0]["n"] == 0
 

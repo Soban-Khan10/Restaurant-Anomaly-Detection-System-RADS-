@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from app.auth import hash_password  # noqa: E402
 from app.deps import get_db, get_evidence_dir  # noqa: E402
 from app.main import app  # noqa: E402
-from app.routes import internal  # noqa: E402
+from app import alerts, ws  # noqa: E402
 from scripts.seed import seed_cameras, seed_hazards, seed_roles, seed_rules, seed_zones  # noqa: E402
 from shared.config import get_settings, load_defaults  # noqa: E402
 from shared.contract import INTERNAL_HEADER, now_iso  # noqa: E402
@@ -52,6 +52,7 @@ class Ctx:
     Session: sessionmaker[Session]
     ids: dict[str, int]
     evidence_dir: Path
+    senders: list  # fake alert senders used instead of configured WhatsApp/Telegram (empty = dashboard only)
 
     def sql(self, query: str, **params: Any) -> list[dict[str, Any]]:
         with self.Session() as s:
@@ -110,7 +111,7 @@ class Ctx:
 
 
 @pytest.fixture
-def ctx(tmp_path: Path):
+def ctx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "rads.db"
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
@@ -144,9 +145,14 @@ def ctx(tmp_path: Path):
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[get_evidence_dir] = lambda: evidence_dir
-    internal.LAST_HEARTBEAT.clear()
+    ws.hub.connections.clear()
+    ws.cameras.last.clear()
+    ws.cameras.marked_offline.clear()
+    senders: list = []
+    monkeypatch.setattr(alerts, "configured_senders", lambda *a, **kw: senders)  # never call real APIs
     try:
-        yield Ctx(TestClient(app), TestClient(app, client=("127.0.0.1", 50000)), Session_, ids, evidence_dir)
+        yield Ctx(TestClient(app), TestClient(app, client=("127.0.0.1", 50000)), Session_, ids, evidence_dir,
+                  senders)
     finally:
         app.dependency_overrides.clear()
         engine.dispose()  # release the file so Windows can delete tmp_path
