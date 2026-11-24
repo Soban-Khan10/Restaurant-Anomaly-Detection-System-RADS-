@@ -47,3 +47,31 @@ def test_worker_in_front_of_shutter_keeps_parts_and_customer_is_ignored():
     assert sorted(d["xyxy"] for d in r.removed) == [(2200, 300, 2240, 340), (2380, 280, 2420, 320)]
     assert [(o["xyxy"], z) for o, z in r.objects] == [((1780, 380, 1820, 440), (2,))]  # worker's phone, in prep
     assert all(d["xyxy"] != CUSTOMER for d in r.dets)
+
+
+def test_restart_camera_closes_incidents_and_resets_tracker_and_rules():
+    from shared.contract import TiedTo
+    from worker.main import restart_camera
+    from worker.rules import IncidentOpen, RuleEngine
+    from worker.settings import Hazard, Rule
+
+    hazards = {"H-01": Hazard("H-01", "Head cover missing", "head_uncovered", "head_covered", TiedTo.WORKER)}
+    rules = [Rule(1, "H-01", 2, True, 0.45, 5.0, 0.7, 5.0, 60.0, "Medium", (2,))]
+    p = CameraPipeline(2, ZONES, fps=5.0, object_classes=set())
+    e = RuleEngine(2, rules, hazards, 5.0)
+    worker_dets = [det("person", WORKER), det("head_uncovered", (1770, 390, 1830, 450))]
+
+    def run(n, t0):
+        opens = []
+        for i in range(n):
+            r, _ = p.process(worker_dets, SHAPE, 0.0)
+            opens += [ev for ev in e.update(t0 + i * 0.2, r.workers, r.objects, r.lost_track_ids)
+                      if isinstance(ev, IncidentOpen)]
+        return opens, r
+
+    opens, r = run(20, 1000.0)
+    assert len(opens) == 1 and r.workers[0].track_id == 1
+    closes = restart_camera(p, e)                       # the clip looped
+    assert len(closes) == 1 and closes[0].reason == "clip looped" and closes[0].end_t == 1000.0 + 19 * 0.2
+    opens, r = run(20, 2000.0)                          # next pass: fresh tracker ids, fresh incident
+    assert r.workers[0].track_id == 1 and len(opens) == 1

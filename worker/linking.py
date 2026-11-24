@@ -25,6 +25,7 @@ PARTS: dict[str, tuple[str, str]] = {
     "apron": ("apron", "yes"),
     "no_apron": ("apron", "no"),
 }
+CLASS_OF: dict[tuple[str, str], str] = {v: k for k, v in PARTS.items()}  # (kind, state) -> class name
 BAND = {"head": 0, "mask": 0, "apron": 1}  # which third of the person box (0 = top, 1 = middle)
 VIOLATION_STATES = {"head": "uncovered", "mask": "off", "apron": "no"}
 
@@ -38,6 +39,7 @@ class Worker:
     apron: str | None = None   # yes | no | None
     confs: dict[str, float] = field(default_factory=dict)  # person, head, mask, apron
     zone_ids: tuple[int, ...] = ()
+    parts: dict[str, dict[str, Any]] = field(default_factory=dict)  # kind -> the linked detection (for evidence)
 
     def violations(self) -> list[str]:
         return [k for k, bad in VIOLATION_STATES.items() if getattr(self, k) == bad]
@@ -78,4 +80,5 @@ def link_parts(persons: Iterable[TrackedPerson], dets: Iterable[dict[str, Any]],
         if d["conf"] > w.confs.get(kind, -1.0):
             setattr(w, kind, state)
             w.confs[kind] = float(d["conf"])
+            w.parts[kind] = d
     return workers

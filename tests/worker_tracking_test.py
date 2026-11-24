@@ -75,3 +75,18 @@ def test_cameras_have_independent_ids():
 def test_bad_fps():
     with pytest.raises(ValueError):
         PersonTracker(1, fps=0)
+
+
+def test_removed_ids_reported_when_the_tracker_drops_a_track():
+    t = PersonTracker(1, fps=5.0)
+    run(t, [[person(100)]] * 5)
+    assert t.removed_ids == []
+    removed_at = None
+    for i in range(30):
+        t.update([], SHAPE)
+        if t.removed_ids:
+            removed_at, ids = i + 1, t.removed_ids
+            break
+    assert ids == [1] and removed_at in (26, 27)              # dropped ~25 frames (5 s) after it was lost
+    t.update([], SHAPE)
+    assert t.removed_ids == []                                # reported once

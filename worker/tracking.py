@@ -49,6 +49,8 @@ class PersonTracker:
             lost = getattr(self._tracker, "max_time_lost", args.track_buffer)
         self.max_lost_frames = int(lost)
         self.keep_s_effective = self.max_lost_frames / fps
+        self._alive: set[int] = set()
+        self.removed_ids: list[int] = []  # track ids the tracker dropped in the last update (lost > keep_s)
         log.info("cam%d tracker: track_buffer=%d -> max_frames_lost=%d at %.1f FPS = %.1f s",
                  camera_id, self.track_buffer, self.max_lost_frames, fps, self.keep_s_effective)
 
@@ -57,6 +59,11 @@ class PersonTracker:
         persons = [d for d in dets if d["cls_name"] == PERSON]
         data = np.array([[*d["xyxy"], d["conf"], 0.0] for d in persons], dtype=np.float32).reshape(-1, 6)
         out = self._tracker.update(Boxes(data, tuple(frame_shape[:2])))
+        # A track is alive while it is tracked or lost (kept for max_lost_frames); gone = removed.
+        alive = {int(t.track_id) for t in (*self._tracker.tracked_stracks, *self._tracker.lost_stracks)
+                 if t.is_activated}
+        self.removed_ids = sorted(self._alive - alive)
+        self._alive = alive
         result = []
         for row in out:
             d = persons[int(row[-1])]
@@ -65,3 +72,5 @@ class PersonTracker:
 
     def reset(self) -> None:
         self._tracker.reset()
+        self._alive = set()
+        self.removed_ids = []

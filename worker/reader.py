@@ -38,6 +38,7 @@ class Frame:
     image: np.ndarray
     capture_t: float  # time.perf_counter() of capture (nominal frame time for a file)
     seq: int          # increases by one for every new frame from this reader
+    loop: int = 0     # video files: how many times the file looped back to its start (0 = first pass)
 
 
 class CameraReader(threading.Thread):
@@ -140,7 +141,7 @@ class CameraReader(threading.Thread):
     def _publish(self, image: np.ndarray, capture_t: float) -> None:
         with self._lock:
             self._seq += 1
-            self._latest = Frame(image, capture_t, self._seq)
+            self._latest = Frame(image, capture_t, self._seq, self.loops)
             self._times.append(time.perf_counter())
         self.frames += 1
         if self.status != CameraStatus.ONLINE:

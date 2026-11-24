@@ -149,3 +149,15 @@ def test_file_reader_that_falls_behind_skips_instead_of_speeding_up(clip25):
         assert r.latest().capture_t - f1.capture_t == pytest.approx(0.2, abs=0.08)  # back in real time
     finally:
         r.stop(timeout=3)
+
+
+def test_frames_carry_the_clip_pass(clip):
+    r = CameraReader(1, clip, retry_s=0.2)
+    r.start()
+    try:
+        assert r.first_frame.wait(5)
+        assert r.latest().loop == 0
+        assert _wait(lambda: r.latest().loop == 1, 5)      # 2 s clip: second pass
+        assert r.loops == 1
+    finally:
+        r.stop(timeout=3)
