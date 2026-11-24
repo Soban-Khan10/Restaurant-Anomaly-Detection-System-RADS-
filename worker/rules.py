@@ -27,11 +27,15 @@ same open incident (row and track_id) and cooldowns – when either guard matche
 Several lost/new tracks are paired nearest last box first (position matches before head-count matches). Two workers
 visible at the same time are never merged. Every takeover is logged.
 Crossing check (pure ID swaps, worker hazards): two tracks that stay tracked may simply trade IDs when they overlap,
-so no new track is born and neither guard applies. If worker B is about to confirm hazard h, and exactly one worker A
-that overlapped B (IoU > 0) within the last 10 s has an OPEN incident for h but no violation of h since the earliest
-of those overlaps, and B showed no violation of h in the 10 s before that earliest overlap (B's violations only
-began after the crossing), A's open incident moves to B instead of a new one opening (same incident row, its
-track_id kept; logged as "swap transfer"). B continues it and A starts fresh. More than one such A: nothing special.
+so no new track is born and neither guard applies. Crossing window W = the rule's window_s + 10 s. If worker B is
+about to confirm hazard h, and exactly one worker A that overlapped B (IoU > 0) within the last W has an OPEN incident
+for h but no violation of h since the earliest of those overlaps, and B showed no violation of h in the W before that
+earliest overlap (B's violations only began after the crossing), A's open incident moves to B instead of a new one
+opening (same incident row, its track_id kept; logged as "swap transfer"). B continues it and A starts fresh. More
+than one such A: nothing special. Frames in which A's and B's boxes overlap do not count as violation evidence for
+either condition (a part can attach to either person there); the rule engine itself still counts them.
+The check is OFF by default (it cannot tell a pure swap from two genuine violators reliably on position alone);
+switch it on with RuleEngine(crossing_check=True) / worker --crossing-check.
 Clip loop (video files): restart() closes the camera's open incidents and forgets all its state.
 """
 from __future__ import annotations
@@ -54,7 +58,7 @@ VIOLATION = "violation"
 COMPLIANT = "compliant"
 SPOT_RADIUS_PX = 150.0
 SWITCH_MIN_IOU = 0.3
-CROSSING_WINDOW_S = 10.0  # crossing check: how far back an overlap of two tracks counts
+CROSSING_EXTRA_S = 10.0  # crossing check window = rule.window_s + this
 
 _REFS: Iterator[int] = itertools.count(1)  # incident refs, unique in this process (all cameras)
 
@@ -109,6 +113,11 @@ def iou(a: Box, b: Box) -> float:
 
 def _dist(p: tuple[float, float], q: tuple[float, float]) -> float:
     return math.hypot(p[0] - q[0], p[1] - q[1])
+
+
+def crossing_window(rule: Rule) -> float:
+    """Crossing check window for a rule: its window_s + 10 s (15 s with the default 5 s window)."""
+    return rule.window_s + CROSSING_EXTRA_S
 
 
 def min_seen(rule: Rule, fps: float) -> int:
@@ -179,7 +188,7 @@ class _KeyState:
     obs: deque = field(default_factory=deque)  # (t, kind, conf) of seen frames inside the window
     incident: _Incident | None = None
     cooldown_until: float = -math.inf
-    violation_times: deque = field(default_factory=deque)  # violations of the last 2 x CROSSING_WINDOW_S (crossing check)
+    violation_times: deque = field(default_factory=deque)  # violation times, last 2 crossing windows (crossing check)
 
 
 @dataclass
@@ -194,12 +203,13 @@ class _WorkerIdentity:
 
 class RuleEngine:
     def __init__(self, camera_id: int, rules: Iterable[Rule], hazards: dict[str, Hazard], fps: float,
-                 track_keep_s: float = 5.0) -> None:
+                 track_keep_s: float = 5.0, crossing_check: bool = False) -> None:
         self.camera_id = camera_id
         self.fps = fps
         self.track_keep_s = track_keep_s  # how long the tracker keeps a lost track (head-count guard window)
         self.takeovers = 0
         self.swap_transfers = 0
+        self.crossing_check = crossing_check
         self._overlaps: dict[tuple[int, int], deque] = {}  # (worker, worker) -> times their boxes overlapped
         self.rules = [r for r in rules if r.enabled and r.camera_id == camera_id and r.hazard_id in hazards]
         self.hazards = hazards
@@ -210,6 +220,7 @@ class RuleEngine:
         self._next_spot = itertools.count(1)
         worker_rules = [r for r in self.rules if hazards[r.hazard_id].tied_to == TiedTo.WORKER]
         self._max_worker_cooldown = max((r.cooldown_s for r in worker_rules), default=0.0)
+        self._max_crossing_s = max((crossing_window(r) for r in worker_rules), default=CROSSING_EXTRA_S)
 
     # ------------------------------------------------------------------ public
 
@@ -277,7 +288,7 @@ class RuleEngine:
             st.obs.popleft()
         if kind == VIOLATION and key[0] == "track":
             st.violation_times.append(t)
-            while st.violation_times and st.violation_times[0] < t - 2 * CROSSING_WINDOW_S:
+            while st.violation_times and st.violation_times[0] < t - 2 * self._max_crossing_s:
                 st.violation_times.popleft()
         inc = st.incident
         if inc is not None:
@@ -293,7 +304,7 @@ class RuleEngine:
         viol = [o for o in st.obs if o[1] == VIOLATION]
         if seen < min_seen(rule, self.fps) or len(viol) / seen < rule.min_ratio:
             return
-        if key[0] == "track" and self._swap_transfer(t, hz.hazard_id, key, st, conf):
+        if key[0] == "track" and self.crossing_check and self._swap_transfer(t, hz.hazard_id, key, st, conf):
             return
         confs = [c for _, _, c in viol]
         st.incident = _Incident(next(_REFS), viol[0][0], confs, last_violation_t=t)
@@ -373,7 +384,7 @@ class RuleEngine:
                         self._overlaps.setdefault((min(ca, cb), max(ca, cb)), deque()).append(t)
         for pair in list(self._overlaps):
             times = self._overlaps[pair]
-            while times and t - times[0] > CROSSING_WINDOW_S:
+            while times and t - times[0] > 2 * self._max_crossing_s:  # B's look-back reaches 2 windows back
                 times.popleft()
             if not times:
                 del self._overlaps[pair]
@@ -381,6 +392,7 @@ class RuleEngine:
     def _swap_transfer(self, t: float, hazard_id: str, key: Key, st: _KeyState, conf: float) -> bool:
         """Crossing check (see the module docstring). True if A's open incident was moved to `key` (= B)."""
         b = key[1]
+        window = crossing_window(st.rule)
         candidates = []
         for (x, y), times in self._overlaps.items():
             if b not in (x, y):
@@ -389,10 +401,15 @@ class RuleEngine:
             st_a = self._states.get((hazard_id, ("track", a)))
             if st_a is None or st_a.incident is None:
                 continue
-            first_overlap = times[0]
-            if st_a.incident.last_violation_t >= first_overlap:
+            recent = [o for o in times if t - o <= window]
+            if not recent:
+                continue  # no overlap within the crossing window
+            first_overlap = recent[0]
+            overlap_frames = set(times)  # A and B overlapping: not evidence either way
+            if any(v >= first_overlap and v not in overlap_frames for v in st_a.violation_times):
                 continue  # A violated since the overlap: A is still the violator
-            if any(first_overlap - CROSSING_WINDOW_S <= v < first_overlap for v in st.violation_times):
+            if any(first_overlap - window <= v < first_overlap and v not in overlap_frames
+                   for v in st.violation_times):
                 continue  # B was already violating before the crossing: B is a violator of his own
             candidates.append((a, st_a, first_overlap))
         if len(candidates) != 1:

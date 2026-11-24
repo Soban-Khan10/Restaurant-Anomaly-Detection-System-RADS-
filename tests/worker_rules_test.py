@@ -3,7 +3,7 @@ import pytest
 
 from shared.contract import TiedTo
 from worker.linking import Worker
-from worker.rules import IncidentClose, IncidentOpen, RuleEngine, Spot, match_spots, min_seen
+from worker.rules import IncidentClose, IncidentOpen, RuleEngine, Spot, crossing_window, match_spots, min_seen
 from worker.settings import Hazard, Rule
 
 FPS = 5.0
@@ -56,8 +56,8 @@ def bin_(state, conf=0.8, zones=(WASTE,)):
 class Run:
     """Feeds frames at 5 FPS and collects events."""
 
-    def __init__(self, *rules):
-        self.engine = RuleEngine(1, list(rules), HAZARDS, FPS)
+    def __init__(self, *rules, **engine_kw):
+        self.engine = RuleEngine(1, list(rules), HAZARDS, FPS, **engine_kw)
         self.t = T0
         self.events = []
 
@@ -370,7 +370,7 @@ def cross(r, a1=None, a2=None, n=5):
 
 
 def test_pure_id_swap_moves_the_open_incident_instead_of_a_duplicate():
-    r = Run(rule("H-06"))
+    r = Run(rule("H-06"), crossing_check=True)
     r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])      # K = track 1, no apron
     (o,) = r.opens
     cross(r)
@@ -385,7 +385,7 @@ def test_pure_id_swap_moves_the_open_incident_instead_of_a_duplicate():
 
 
 def test_two_genuine_violators_crossing_get_two_incidents():
-    r = Run(rule("H-06"))
+    r = Run(rule("H-06"), crossing_check=True)
     r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT, apron="yes")])
     cross(r, a1="no")                                                          # A still violating while crossing
     r.frames(60, [worker(1, box=LEFT, apron="no"), worker(2, box=RIGHT, apron="no")])  # B takes his apron off
@@ -394,7 +394,7 @@ def test_two_genuine_violators_crossing_get_two_incidents():
 
 
 def test_worker_fixing_his_apron_while_crossing_a_compliant_worker_closes_normally():
-    r = Run(rule("H-06"))
+    r = Run(rule("H-06"), crossing_check=True)
     r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT, apron="yes")])
     cross(r, a1="yes", a2="yes")
     r.frames(40, [worker(1, box=LEFT, apron="yes"), worker(2, box=RIGHT, apron="yes")])
@@ -403,7 +403,7 @@ def test_worker_fixing_his_apron_while_crossing_a_compliant_worker_closes_normal
 
 
 def test_two_candidates_do_nothing_special():
-    r = Run(rule("H-06"))
+    r = Run(rule("H-06"), crossing_check=True)
     third = (1000.0, 100.0, 1200.0, 700.0)
     r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(3, box=third, apron="no"), worker(2, box=LEFT)])
     assert len(r.opens) == 2
@@ -412,11 +412,11 @@ def test_two_candidates_do_nothing_special():
     assert len(r.opens) == 3 and r.engine.swap_transfers == 0
 
 
-def test_overlap_older_than_10_s_does_not_count():
-    r = Run(rule("H-06"))
+def test_overlap_older_than_the_crossing_window_does_not_count():
+    r = Run(rule("H-06"), crossing_check=True)                                 # window_s 5 -> crossing window 15 s
     r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
     cross(r)
-    r.frames(60, [worker(1, box=LEFT), worker(2, box=RIGHT)])                  # 12 s, both apron unseen
+    r.frames(85, [worker(1, box=LEFT), worker(2, box=RIGHT)])                  # 17 s, both apron unseen
     r.frames(60, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
     assert len(r.opens) == 2 and r.engine.swap_transfers == 0
 
@@ -425,7 +425,7 @@ def test_two_maskless_workers_brief_overlap_one_mask_unseen_no_transfer():
     """The H-08 case from the clip: both workers maskless from the start; B's mask is seen less often, so B
     confirms later; just before that they brush (brief overlap) while A's mask is unseen for a moment.
     B was already violating before the overlap -> no transfer; each keeps his own incident and snapshot."""
-    r = Run(rule("H-08"))
+    r = Run(rule("H-08"), crossing_check=True)
     a_box, b_box = RIGHT, LEFT
     for i in range(15):                                        # 3 s: A always maskless, B maskless 2 of 3 frames
         r.frame([worker(1, box=a_box, mask="off"), worker(2, box=b_box, mask="off" if i % 3 != 2 else None)])
@@ -438,3 +438,62 @@ def test_two_maskless_workers_brief_overlap_one_mask_unseen_no_transfer():
     assert r.engine.swap_transfers == 0 and r.closes == []
     snap = {o.track_id: o.subject_box for o in r.opens}
     assert snap[1] == a_box and snap[2] == b_box               # each incident's snapshot shows its own worker
+
+
+
+def test_crossing_window_follows_window_s():
+    assert crossing_window(rule("H-06", window_s=5.0)) == 15.0
+    assert crossing_window(rule("H-04", **H04_DB)) == 20.0
+
+    def swap_with_late_confirm(window_s):
+        """K's violations show again 11.4 s after the crossing; B confirms 14.8 s (window 5) or 13.2 s (window 2)
+        after the first overlap frame."""
+        r = Run(rule("H-06", window_s=window_s), crossing_check=True)
+        r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
+        cross(r)
+        r.frames(57, [worker(1, box=LEFT), worker(2, box=RIGHT)])
+        r.frames(30, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
+        return r
+
+    r5 = swap_with_late_confirm(5.0)                                           # 14.8 s <= 15 s
+    assert len(r5.opens) == 1 and r5.engine.swap_transfers == 1
+    r2 = swap_with_late_confirm(2.0)                                           # 13.2 s > 12 s
+    assert len(r2.opens) == 2 and r2.engine.swap_transfers == 0
+
+
+def test_a_violations_during_overlap_frames_are_not_evidence():
+    """The swap happens in the middle of the crossing; A's part is still seen while the boxes overlap."""
+    r = Run(rule("H-06"), crossing_check=True)
+    r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
+    cross(r, a1="no")                                                          # A "violates" only in overlap frames
+    r.frames(40, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
+    assert len(r.opens) == 1 and r.engine.swap_transfers == 1
+
+
+def test_b_violations_during_overlap_frames_are_not_evidence():
+    """An earlier brush (outside the crossing window but inside B's look-back) where A's no_apron was linked to B's
+    box does not count as B violating before the crossing."""
+    r = Run(rule("H-06"), crossing_check=True)
+    r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
+    cross(r, a1="no", a2="no", n=2)                                            # ambiguous: both boxes "violating"
+    r.frames(63, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])      # 12.6 s apart, A still violating
+    cross(r)                                                                   # the real crossing (swap)
+    r.frames(30, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
+    assert len(r.opens) == 1 and r.engine.swap_transfers == 1
+
+
+def test_crossing_check_is_off_by_default():
+    r = Run(rule("H-06"))  # default: off
+    assert r.engine.crossing_check is False
+    r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
+    cross(r)
+    r.frames(60, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
+    assert len(r.opens) == 2 and r.engine.swap_transfers == 0                  # the duplicate is not prevented
+
+
+def test_crossing_check_explicitly_off():
+    r = Run(rule("H-06"), crossing_check=False)
+    r.frames(50, [worker(1, box=RIGHT, apron="no"), worker(2, box=LEFT)])
+    cross(r)
+    r.frames(60, [worker(1, box=LEFT), worker(2, box=RIGHT, apron="no")])
+    assert len(r.opens) == 2 and r.engine.swap_transfers == 0

@@ -175,6 +175,13 @@ def restart_camera(pipeline: CameraPipeline, engine: RuleEngine | None, reason: 
     return closes
 
 
+def build_engines(ws: WorkerSettings, pipelines: dict[int, CameraPipeline], fps: float,
+                  crossing_check: bool = False) -> dict[int, RuleEngine]:
+    """One rule engine per camera, with that camera's enabled rules and its tracker's keep time."""
+    return {c: RuleEngine(c, ws.rules_for(c), ws.hazards, fps, track_keep_s=p.tracker.keep_s_effective,
+                          crossing_check=crossing_check) for c, p in pipelines.items()}
+
+
 def zone_object_classes(ws: WorkerSettings) -> set[str]:
     """Classes of the zone-tied hazards (phone, bin_open, bin_closed), from the hazards table."""
     out: set[str] = set()
@@ -415,6 +422,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--duration", type=float, default=0, help="stop after this many seconds (0 = run until stopped)")
     p.add_argument("--report-every", type=float, default=30, help="seconds between timing log lines")
     p.add_argument("--retry", type=float, default=10, help="seconds between reconnect attempts")
+    p.add_argument("--crossing-check", action="store_true",
+                   help="turn on the crossing check that moves an open incident across a pure tracker ID swap "
+                        "(off by default)")
     return p.parse_args(argv)
 
 
@@ -494,8 +504,9 @@ def _run(args: argparse.Namespace, settings) -> int:
         first = next((r.latest() for r in readers.values() if r.latest() is not None), None)
         detector.warmup(first.image if first else None)
 
-        engines = {c: RuleEngine(c, ws.rules_for(c), ws.hazards, fps,
-                                 track_keep_s=pipelines[c].tracker.keep_s_effective) for c in sources}
+        engines = build_engines(ws, pipelines, fps, crossing_check=args.crossing_check)
+        log.info("crossing check (pure ID swaps): %s", "ON (--crossing-check, window = rule window_s + 10 s)"
+                 if args.crossing_check else "OFF (default; turn on with --crossing-check)")
         for c, e in engines.items():
             log.info("cam%d rules: %s", c, "; ".join(
                 f"{r.hazard_id} zones={list(r.zone_ids)} conf>={r.conf_threshold} window={r.window_s:g}s "

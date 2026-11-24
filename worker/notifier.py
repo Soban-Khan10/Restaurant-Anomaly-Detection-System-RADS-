@@ -174,7 +174,8 @@ class Notifier:
         self.backoff_s = backoff_s
         self.timeout_s = timeout_s
         self.jpeg_quality = jpeg_quality
-        self._http = http_client or httpx.Client(timeout=timeout_s)
+        # drop idle connections after 2 s – before the server's 5 s keep-alive closes them under a request
+        self._http = http_client or httpx.Client(timeout=timeout_s, limits=httpx.Limits(keepalive_expiry=2.0))
         self._own_http = http_client is None
         self.jobs = JobQueue(maxsize, "db")
         self.posts = JobQueue(maxsize, "http", priority=True)

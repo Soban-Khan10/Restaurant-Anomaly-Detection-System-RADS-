@@ -75,3 +75,21 @@ def test_restart_camera_closes_incidents_and_resets_tracker_and_rules():
     assert len(closes) == 1 and closes[0].reason == "clip looped" and closes[0].end_t == 1000.0 + 19 * 0.2
     opens, r = run(20, 2000.0)                          # next pass: fresh tracker ids, fresh incident
     assert r.workers[0].track_id == 1 and len(opens) == 1
+
+
+
+def test_crossing_check_switch_is_opt_in():
+    from shared.contract import TiedTo
+    from worker.main import build_engines, parse_args
+    from worker.settings import Camera, Hazard, Rule, WorkerSettings
+
+    assert parse_args([]).crossing_check is False
+    assert parse_args(["--crossing-check"]).crossing_check is True
+    ws = WorkerSettings(
+        cameras={2: Camera(2, "Camera 2", "rtsp://x", True, 5.0, None, None)},
+        zones={z.zone_id: z for z in ZONES},
+        hazards={"H-06": Hazard("H-06", "Apron missing", "no_apron", "apron", TiedTo.WORKER)},
+        rules={1: Rule(1, "H-06", 2, True, 0.45, 5.0, 0.7, 5.0, 60.0, "Medium", (2,))})
+    pipelines = {2: CameraPipeline(2, ZONES, fps=5.0, object_classes=set())}
+    assert build_engines(ws, pipelines, 5.0)[2].crossing_check is False
+    assert build_engines(ws, pipelines, 5.0, crossing_check=True)[2].crossing_check is True
