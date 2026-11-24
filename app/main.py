@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
 from app import alerts, ws
-from app.routes import auth, evidence, incidents, internal, users
+from app.routes import auth, cameras, evidence, incidents, internal, rules, users, zones
 from shared.config import get_settings
 from shared.db import get_engine
 
@@ -32,6 +32,8 @@ async def lifespan(_: FastAPI):
         raise RuntimeError(f"No database at {s.db_path}; run scripts/init_db.py and scripts/seed.py")
     if not logging.getLogger().handlers:  # show rads.* INFO logs next to uvicorn's
         logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
+    # APScheduler logs two INFO lines per job run (every minute); keep only its warnings and errors.
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
     channels = [x.channel.value for x in alerts.configured_senders()]
     log.info("alert channels: dashboard%s", "".join(f", {c}" for c in channels))
@@ -64,6 +66,9 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(incidents.router)
     app.include_router(evidence.router)
+    app.include_router(cameras.router)
+    app.include_router(zones.router)
+    app.include_router(rules.router)
     app.include_router(internal.router)
     app.include_router(ws.router)
     return app

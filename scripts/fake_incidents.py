@@ -8,17 +8,28 @@ Behaves like the real worker (contract sections 3, 5, 6):
 Only writes what the worker owns: incidents (insert, end_time, conf_*), evidence, camera_health.
 Rows are tagged model_version='fake_incidents'; remove them with --purge.
 
+It also stands in for the worker's own HTTP server (contract messages 7 and 8) on RADS_WORKER_URL (port 8001):
+  * POST /reload           -> {"ok": true}   (rules and zones are re-read anyway before every fake incident)
+  * GET  /stream/{camera}  -> MJPEG at ~2 FPS: a test pattern (or --video FILE) with the camera's zones drawn,
+                              re-read from the DB every frame, so zone edits show up at once
+Both require X-RADS-Internal, like the real worker.
+
     python scripts/fake_incidents.py                    # run until Ctrl+C
     python scripts/fake_incidents.py --interval 10 --count 3
-    python scripts/fake_incidents.py --purge            # delete all fake incidents + their files
+    python scripts/fake_incidents.py --no-incidents     # heartbeats + /reload + /stream only
+    python scripts/fake_incidents.py --video clip.mp4   # stream a video file (needs opencv-python)
+    python scripts/fake_incidents.py --purge            # delete all fake incidents + their files (asks first)
 """
 from __future__ import annotations
 
 import argparse
+import asyncio
+import io
 import json
 import logging
 import random
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +38,9 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python scripts/fake_incidents.py`
 
 import httpx  # noqa: E402
+import uvicorn  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+from fastapi.responses import StreamingResponse  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
@@ -34,8 +48,8 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from shared.config import get_settings  # noqa: E402
 from shared.db import get_engine  # noqa: E402
 from shared.contract import (HEARTBEAT_INTERVAL_S, INTERNAL_HEADER, NOTIFY_RETRIES, PATH_HEARTBEAT,  # noqa: E402
-                             PATH_INCIDENT_CLOSED, PATH_INCIDENT_NEW, TZ, CameraStatus, Heartbeat, IncidentRef,
-                             TiedTo, now_iso)
+                             PATH_INCIDENT_CLOSED, PATH_INCIDENT_NEW, PATH_WORKER_RELOAD, PATH_WORKER_STREAM,
+                             STREAM_FPS, TZ, CameraStatus, Heartbeat, IncidentRef, ReloadResponse, TiedTo, now_iso)
 
 MODEL_VERSION = "fake_incidents"
 log = logging.getLogger("fake_incidents")
@@ -247,9 +261,144 @@ def purge(Session_: sessionmaker[Session], evidence_dir: Path) -> int:
     return len(ids)
 
 
+# ---------------------------------------------------------------- worker HTTP stand-in (messages 7 and 8)
+
+ZONE_COLOURS = {"prep": (46, 204, 113), "waste": (243, 156, 18), "ignore": (149, 165, 166)}
+STREAM_WIDTH = 960  # frames are drawn in camera pixels, then scaled down to this width
+
+
+def _font(size: int):
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+class VideoSource:
+    """Frames from a video file, looping (needs opencv-python)."""
+
+    def __init__(self, path: str):
+        try:
+            import cv2  # noqa: PLC0415
+        except ImportError:
+            raise SystemExit("--video needs OpenCV: pip install opencv-python") from None
+        self.cv2, self.path = cv2, path
+        self.cap = cv2.VideoCapture(path)
+        if not self.cap.isOpened():
+            raise SystemExit(f"Cannot open video {path}")
+        self.lock = threading.Lock()
+
+    def frame(self) -> Image.Image:
+        with self.lock:
+            ok, bgr = self.cap.read()
+            if not ok:  # end of file: start again
+                self.cap.set(self.cv2.CAP_PROP_POS_FRAMES, 0)
+                ok, bgr = self.cap.read()
+        if not ok:
+            raise RuntimeError(f"cannot read frames from {self.path}")
+        return Image.fromarray(self.cv2.cvtColor(bgr, self.cv2.COLOR_BGR2RGB))
+
+
+def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
+                 video: VideoSource | None = None) -> bytes:
+    """One JPEG: test pattern (or video frame) at the camera's size, zones drawn, scaled to STREAM_WIDTH."""
+    w, h = camera["frame_width"] or 1920, camera["frame_height"] or 1080
+    if video is not None:
+        img = video.frame().resize((w, h))
+    else:
+        img = Image.new("RGB", (w, h), (30, 34, 42))
+        bars = [(192, 192, 192), (192, 192, 0), (0, 192, 192), (0, 192, 0), (192, 0, 192), (192, 0, 0), (0, 0, 192)]
+        bw = w // len(bars)
+        d = ImageDraw.Draw(img)
+        for i, c in enumerate(bars):
+            d.rectangle((i * bw, 0, (i + 1) * bw, h // 8), fill=c)
+        x = (n * w // 40) % w  # moving line: proves the picture is live
+        d.rectangle((x, h // 8, x + w // 100, h), fill=(80, 90, 110))
+    d = ImageDraw.Draw(img)
+    big, small = _font(max(h // 22, 12)), _font(max(h // 36, 10))
+    for z in zones:
+        pts = [tuple(p) for p in json.loads(z["polygon"])]
+        colour = ZONE_COLOURS.get(z["type"], (255, 255, 255)) if z["active"] else (90, 90, 90)
+        d.line(pts + [pts[0]], fill=colour, width=max(w // 320, 2))
+        d.text((pts[0][0] + 10, pts[0][1] + 10), f"{z['name']} ({z['type']})", fill=colour, font=small)
+    stamp = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+    d.text((w // 40, h // 8 + h // 40), f"{camera['name']}  |  {stamp}  |  frame {n}", fill=(255, 255, 255), font=big)
+    label = "FAKE WORKER - test pattern (scripts/fake_incidents.py)" if video is None else "FAKE WORKER - video file"
+    d.text((w // 40, h - h // 12), label, fill=(200, 200, 200), font=small)
+    img = img.resize((STREAM_WIDTH, round(h * STREAM_WIDTH / w)))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=70)
+    return buf.getvalue()
+
+
+def create_worker_app(Session_: sessionmaker[Session], token: str, offline_camera: int | None = None,
+                      video: VideoSource | None = None, fps: float = STREAM_FPS,
+                      max_frames: int | None = None) -> FastAPI:
+    """The worker's HTTP endpoints, faked. `max_frames` ends each stream early (tests)."""
+    api = FastAPI(title="RADS fake worker")
+    api.state.reloads = 0
+
+    def check(x_rads_internal: str | None) -> None:
+        if not token or x_rads_internal != token:
+            raise HTTPException(401, "Missing or wrong internal token")
+
+    @api.post(PATH_WORKER_RELOAD, response_model=ReloadResponse)
+    def reload(x_rads_internal: str | None = Header(None, alias=INTERNAL_HEADER)) -> ReloadResponse:
+        check(x_rads_internal)
+        api.state.reloads += 1
+        log.info("RELOAD requested by the app (settings changed) - #%d", api.state.reloads)
+        return ReloadResponse(ok=True)
+
+    @api.get(PATH_WORKER_STREAM)
+    def stream(camera_id: int, x_rads_internal: str | None = Header(None, alias=INTERNAL_HEADER)):
+        check(x_rads_internal)
+        if camera_id == offline_camera:
+            raise HTTPException(503, f"camera {camera_id} is offline")
+        with Session_() as s:
+            cam = s.execute(text("SELECT * FROM cameras WHERE camera_id = :c AND enabled = 1"),
+                            {"c": camera_id}).mappings().first()
+        if cam is None:
+            raise HTTPException(404, f"no enabled camera {camera_id}")
+        cam = dict(cam)
+
+        async def frames():
+            n = 0
+            while max_frames is None or n < max_frames:
+                with Session_() as s:  # zones re-read every frame: edits show up at once
+                    zones = [dict(z) for z in s.execute(
+                        text("SELECT * FROM zones WHERE camera_id = :c ORDER BY zone_id"), {"c": camera_id}).mappings()]
+                jpeg = await asyncio.to_thread(render_frame, cam, zones, n, video)
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode()
+                       + b"\r\n\r\n" + jpeg + b"\r\n")
+                n += 1
+                await asyncio.sleep(1 / fps)
+
+        return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+    return api
+
+
+def start_worker_server(api: FastAPI, worker_url: str) -> uvicorn.Server | None:
+    """Serve the stand-in in a background thread on RADS_WORKER_URL's host and port."""
+    u = httpx.URL(worker_url)
+    server = uvicorn.Server(uvicorn.Config(api, host=u.host, port=u.port or 8001, log_level="warning"))
+    thread = threading.Thread(target=server.run, name="fake-worker-http", daemon=True)
+    thread.start()
+    for _ in range(50):
+        if server.started:
+            log.info("Worker stand-in listening on %s (/reload, /stream/{camera_id})", worker_url)
+            return server
+        if not thread.is_alive():
+            break
+        time.sleep(0.1)
+    log.warning("Could not start the worker stand-in on %s (port in use?); continuing without it", worker_url)
+    return None
+
+
 # ---------------------------------------------------------------- main loop
 
-def run(worker: FakeWorker, interval: float, count: int | None, tick: float = 0.5) -> None:
+def run(worker: FakeWorker, interval: float, count: int | None, tick: float = 0.5,
+        make_incidents: bool = True) -> None:
     created = 0
     next_new = next_hb = worker.clock()
     try:
@@ -258,7 +407,7 @@ def run(worker: FakeWorker, interval: float, count: int | None, tick: float = 0.
             if now >= next_hb:
                 worker.heartbeats()
                 next_hb = now + HEARTBEAT_INTERVAL_S
-            if (count is None or created < count) and now >= next_new:
+            if make_incidents and (count is None or created < count) and now >= next_new:
                 worker.new_incident()
                 created += 1
                 next_new = now + interval
@@ -282,6 +431,11 @@ def main() -> int:
     p.add_argument("--no-api", action="store_true", help="only write to the DB, do not call the app")
     p.add_argument("--seed", type=int, default=None, help="random seed for repeatable runs")
     p.add_argument("--purge", action="store_true", help="delete all fake incidents and their files, then exit")
+    p.add_argument("--yes", action="store_true", help="with --purge: do not ask for confirmation")
+    p.add_argument("--no-incidents", action="store_true",
+                   help="no fake incidents: only heartbeats and the /reload + /stream stand-in")
+    p.add_argument("--no-server", action="store_true", help="do not start the /reload + /stream stand-in")
+    p.add_argument("--video", default=None, help="stream this video file instead of a test pattern")
     args = p.parse_args()
     if args.min_duration > args.max_duration:
         p.error("--min-duration must not exceed --max-duration")
@@ -296,6 +450,16 @@ def main() -> int:
     Session_ = sessionmaker(bind=get_engine(), expire_on_commit=False)
 
     if args.purge:
+        with Session_() as db:
+            n = db.execute(text("SELECT COUNT(*) FROM incidents WHERE model_version = :mv"),
+                           {"mv": MODEL_VERSION}).scalar_one()
+        if n == 0:
+            print("No fake incidents to delete.")
+            return 0
+        if not args.yes and input(f"Delete ALL {n} fake incident(s) in {s.db_path}, with their evidence files "
+                                  "and alerts? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Nothing deleted.")
+            return 0
         print(f"Deleted {purge(Session_, s.evidence_dir)} fake incident(s).")
         return 0
 
@@ -309,11 +473,17 @@ def main() -> int:
 
     worker = FakeWorker(Session_, s.evidence_dir, notifier, random.Random(args.seed),
                         args.min_duration, args.max_duration, args.offline_camera)
-    if not worker.rules():
+    if not args.no_incidents and not worker.rules():
         print("No enabled rules with zones in the database. Run scripts/seed.py first.")
         return 1
-    log.info("Fake worker started: new incident every %ss. Ctrl+C to stop.", args.interval)
-    run(worker, args.interval, args.count)
+    if not args.no_server:
+        video = VideoSource(args.video) if args.video else None
+        start_worker_server(create_worker_app(Session_, s.internal_token, args.offline_camera, video), s.worker_url)
+    if args.no_incidents:
+        log.info("Fake worker started: heartbeats only, no incidents. Ctrl+C to stop.")
+    else:
+        log.info("Fake worker started: new incident every %ss. Ctrl+C to stop.", args.interval)
+    run(worker, args.interval, args.count, make_incidents=not args.no_incidents)
     return 0
 
 

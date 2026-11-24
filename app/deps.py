@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterator
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -71,6 +71,19 @@ def get_current_user(
     if creds is None or creds.scheme.lower() != "bearer":
         raise _UNAUTHORIZED
     user = user_from_token(db, creds.credentials)
+    if user is None:
+        raise _UNAUTHORIZED
+    return user
+
+
+def get_current_user_header_or_query(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    token: str | None = Query(None, description="JWT, for <img src=...> which cannot send headers"),
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    """Like get_current_user, but also accepts ?token=<jwt> (live view / snapshot in an <img> tag)."""
+    raw = creds.credentials if creds is not None and creds.scheme.lower() == "bearer" else token
+    user = user_from_token(db, raw) if raw else None
     if user is None:
         raise _UNAUTHORIZED
     return user

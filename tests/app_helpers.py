@@ -25,6 +25,7 @@ os.environ["RADS_INTERNAL_TOKEN"] = "test-internal-token-0123456789"
 os.environ["CAM1_RTSP"] = "rtsp://user:secret-cam-pass@192.0.2.1:554/1"
 os.environ["CAM2_RTSP"] = "rtsp://user:secret-cam-pass@192.0.2.2:554/1"
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -34,6 +35,7 @@ from app.auth import hash_password  # noqa: E402
 from app.deps import get_db, get_evidence_dir  # noqa: E402
 from app.main import app  # noqa: E402
 from app import alerts, ws  # noqa: E402
+from app.worker import WorkerClient, get_worker  # noqa: E402
 from scripts.seed import seed_cameras, seed_hazards, seed_roles, seed_rules, seed_zones  # noqa: E402
 from shared.config import get_settings, load_defaults  # noqa: E402
 from shared.contract import INTERNAL_HEADER, now_iso  # noqa: E402
@@ -45,6 +47,30 @@ USERS = {"admin": "Admin", "manager": "Manager", "tech": "Technical"}
 INTERNAL = {INTERNAL_HEADER: get_settings().internal_token}
 
 
+class WorkerStub:
+    """Stands in for the worker's HTTP server in app tests. Records every call; by default /reload answers
+    {"ok": true}. Set `down = True` to refuse connections, or `handler` to answer requests yourself."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, str | None]] = []
+        self.down = False
+        self.handler = None
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append((request.method, request.url.path, request.headers.get(INTERNAL_HEADER)))
+        if self.down:
+            raise httpx.ConnectError("connection refused")
+        if self.handler is not None:
+            return self.handler(request)
+        if request.url.path == "/reload":
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(404)
+
+    @property
+    def reloads(self) -> int:
+        return sum(1 for m, path, _ in self.calls if path == "/reload")
+
+
 @dataclass
 class Ctx:
     client: TestClient  # requests come from host "testclient" (not localhost)
@@ -53,6 +79,7 @@ class Ctx:
     ids: dict[str, int]
     evidence_dir: Path
     senders: list  # fake alert senders used instead of configured WhatsApp/Telegram (empty = dashboard only)
+    worker: WorkerStub
 
     def sql(self, query: str, **params: Any) -> list[dict[str, Any]]:
         with self.Session() as s:
@@ -150,9 +177,12 @@ def ctx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ws.cameras.marked_offline.clear()
     senders: list = []
     monkeypatch.setattr(alerts, "configured_senders", lambda *a, **kw: senders)  # never call real APIs
+    worker = WorkerStub()
+    app.dependency_overrides[get_worker] = lambda: WorkerClient(
+        "http://127.0.0.1:8001", get_settings().internal_token, transport=httpx.MockTransport(worker))
     try:
         yield Ctx(TestClient(app), TestClient(app, client=("127.0.0.1", 50000)), Session_, ids, evidence_dir,
-                  senders)
+                  senders, worker)
     finally:
         app.dependency_overrides.clear()
         engine.dispose()  # release the file so Windows can delete tmp_path
