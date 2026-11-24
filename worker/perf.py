@@ -71,6 +71,12 @@ class PerfWindow:
         self.cams: dict[int, CamStats] = {c: CamStats() for c in self.camera_ids}
         self.gui_s = 0.0  # preview-window event pumping, done in idle time; not part of busy
 
+    def add_camera(self, cam: int) -> None:
+        """A camera that appeared on reload."""
+        if cam not in self.cams:
+            self.camera_ids.append(cam)
+            self.cams[cam] = CamStats()
+
     def add_gui(self, seconds: float) -> None:
         self.gui_s += seconds
 

@@ -11,6 +11,8 @@ detect -> ignore-zone policy -> track kept persons (ByteTrack per camera) -> lin
 rule engine. Incidents, evidence JPEGs, camera_health and the API messages are handled by the notifier threads, so
 the loop never waits on disk, database or network. Every `--report-every` seconds the timings, loop busy % and
 track counts are logged to rads_data/logs/worker.log.
+A web server thread on 127.0.0.1:8001 serves the live view (GET /stream/{camera_id}, MJPEG), POST /reload (token;
+the scheduler re-reads the settings before its next frame and resets only what changed) and GET /health.
 Stop with Ctrl+C, SIGTERM, or `q`/Esc in the preview window: open incidents are closed and the notifier finishes
 its queue before the process exits.
 """
@@ -29,24 +31,26 @@ import queue
 import signal
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
-from typing import Any
+from typing import Any, Callable
 
 import cv2
 
 from shared.config import get_settings
 from shared.contract import HEARTBEAT_INTERVAL_S, TiedTo, ZoneType
 from worker.detector import Detector
-from worker.draw import (DARK_GREY, GREY, draw_detections, draw_overlay, draw_workers, draw_zones,
-                         resize_for_display)
+from worker.draw import annotate as draw_annotate
 from worker.linking import Worker, link_parts
-from worker.notifier import CloseJob, HeartbeatJob, Notifier, OpenJob
+from worker.notifier import CloseJob, HeartbeatJob, Notifier, OpenJob, iso_time
 from worker.perf import PerfWindow, advance_slot
 from worker.reader import CameraReader, redact
+from worker.reload import diff, validate, zone_camera
 from worker.rules import Event, IncidentOpen, RuleEngine
 from worker.settings import WorkerSettings, Zone, load_settings
 from worker.tracking import PERSON, PersonTracker
+from worker.webserver import FrameHub, WebServer
 from worker.zones import CameraZones
 
 log = logging.getLogger("worker.main")
@@ -55,6 +59,7 @@ FIRST_FRAME_TIMEOUT_S = 15.0
 MAX_CONSECUTIVE_ERRORS = 50
 GUI_PUMP_MIN_IDLE_S = 0.025  # pump the preview window only when at least this much idle time is left
 GUI_PUMP_MAX_GAP_S = 1.0     # ...but at least once a second so the window stays responsive
+HANDOFF_S = 0.5              # frames + results to the web server, and the /health snapshot, every 0.5 s
 
 
 def setup_logging(logs_dir: Path, level: int = logging.INFO) -> QueueListener:
@@ -119,6 +124,12 @@ class CameraPipeline:
         """Camera restart (clip looped): forget all tracks; zones stay."""
         self.tracker.reset()
 
+    def set_zones(self, zones: list[Zone]) -> None:
+        """Zones changed on reload: new polygons from the next frame on; tracks are kept."""
+        self.zones = CameraZones(zones)
+        self.prep_ids = {z.zone_id for z in self.zones.of_type(ZoneType.PREP)}
+        self._checked = False  # log coverage / out-of-frame warnings again
+
     def check_frame(self, width: int, height: int) -> None:
         for fc in self.zones.check_frame(width, height):
             z = next(z for z in self.zones.zones if z.zone_id == fc.zone_id)
@@ -152,19 +163,11 @@ class CameraPipeline:
 
 
 def annotate(image, result: FrameResult, pipeline: CameraPipeline, width: int, lines: list[str]):
-    """The preview image: zones, kept detections, ignored items (dark grey), workers with IDs/states, overlay."""
-    img, scale = resize_for_display(image, width)
-    draw_zones(img, pipeline.zones.zones, scale)
-    draw_detections(img, result.ignored_persons + result.dropped_parts + result.removed, scale,
-                    color=DARK_GREY, thickness=1, prefix="ign ")
-    draw_detections(img, [d for d in result.dets if d["cls_name"] != PERSON], scale)
-    draw_detections(img, result.untracked, scale, color=GREY, thickness=1)
-    draw_workers(img, result.workers, scale)
+    """The preview image (see draw.annotate) with the tracker and ignore-zone lines added to the overlay."""
     t = pipeline.tracker
-    draw_overlay(img, lines + [f"tracks {len(result.workers)}  keep {t.max_lost_frames} fr = {t.keep_s_effective:.1f} s",
-                               f"ignored: persons {len(result.ignored_persons)}  parts {len(result.dropped_parts)}"
-                               f"  objects {len(result.removed)}"])
-    return img
+    return draw_annotate(image, result, pipeline.zones.zones, width, lines + [
+        f"tracks {len(result.workers)}  keep {t.max_lost_frames} fr = {t.keep_s_effective:.1f} s",
+        f"ignored: persons {len(result.ignored_persons)}  parts {len(result.dropped_parts)}  objects {len(result.removed)}"])
 
 
 def restart_camera(pipeline: CameraPipeline, engine: RuleEngine | None, reason: str = "clip looped"):
@@ -217,6 +220,28 @@ def log_summary(title: str, summary: dict, readers: dict[int, CameraReader]) -> 
              title, summary["busy_pct"], summary["gui_pct"], summary["wall_s"])
 
 
+def log_rules(engines: dict[int, RuleEngine]) -> None:
+    for c, e in engines.items():
+        log.info("cam%d rules: %s", c, "; ".join(
+            f"{r.hazard_id} zones={list(r.zone_ids)} conf>={r.conf_threshold} window={r.window_s:g}s "
+            f"ratio>={r.min_ratio} end_gap={r.end_gap_s:g}s cooldown={r.cooldown_s:g}s {r.severity}"
+            for r in e.rules) or "none")
+
+
+@dataclass
+class Reloader:
+    """What the scheduler needs to apply POST /reload."""
+    load: Callable[[], WorkerSettings] = load_settings
+    cli_sources: bool = False      # cameras from --sourceN are never restarted by a reload
+    retry_s: float = 10.0
+    crossing_check: bool = False
+
+    def start_reader(self, camera_id: int, url: str) -> CameraReader:
+        r = CameraReader(camera_id, url, retry_s=self.retry_s)
+        r.start()
+        return r
+
+
 # --------------------------------------------------------------------------- scheduler
 
 
@@ -226,8 +251,14 @@ class Scheduler:
     def __init__(self, readers: dict[int, CameraReader], detector: Detector, pipelines: dict[int, CameraPipeline],
                  *, interval: float, show: bool, display_width: int, report_every: float, duration: float,
                  stop: threading.Event, engines: dict[int, RuleEngine] | None = None,
-                 notifier: Notifier | None = None, settings: WorkerSettings | None = None) -> None:
+                 notifier: Notifier | None = None, settings: WorkerSettings | None = None,
+                 hub: FrameHub | None = None, reload_event: threading.Event | None = None,
+                 reloader: Reloader | None = None, crossing_check: bool = False) -> None:
         self.readers = readers
+        self.hub = hub
+        self.reload_event = reload_event
+        self.reloader = reloader
+        self.crossing_check = crossing_check
         self.engines = engines or {}
         self.notifier = notifier
         self.settings = settings
@@ -247,14 +278,22 @@ class Scheduler:
         self._hb_frames = {c: 0 for c in readers}   # frames processed since the last heartbeat
         self._hb_last: dict[int, float] = {}
         self._hb_next: dict[int, float] = {}
+        t0 = time.perf_counter()
+        self._next_t: dict[int, float] = {}                 # next processing slot per camera
+        self._window = PerfWindow(list(readers), t0)       # current report window
+        self._total = PerfWindow(list(readers), t0)        # whole run
+        self._pub_last = {c: 0.0 for c in readers}         # last hand-off to the web server
+        self._proc_times: dict[int, deque] = {c: deque() for c in readers}  # processed frames, last 5 s
+        self._health_next = 0.0
 
     def run(self) -> dict:
         cams = list(self.readers)
         n = len(cams)
         t0 = time.perf_counter()
-        next_t = {c: t0 + i * self.interval / n for i, c in enumerate(cams)}  # staggered slots
-        window = PerfWindow(cams, t0)
-        total = PerfWindow(cams, t0)
+        self._next_t = {c: t0 + i * self.interval / n for i, c in enumerate(cams)}  # staggered slots
+        window, total = self._window, self._total
+        window.reset(t0)
+        total.reset(t0)
         next_report = t0 + self.report_every
         end = t0 + self.duration if self.duration > 0 else math.inf
         for c in cams:
@@ -262,8 +301,13 @@ class Scheduler:
             self._hb_next[c] = t0 + HEARTBEAT_INTERVAL_S
 
         while not self.stop.is_set():
-            c = min(cams, key=next_t.__getitem__)
-            slot = next_t[c]
+            self._check_reload()  # before the next frame
+            if not self._next_t:  # every camera disabled
+                if self.stop.wait(0.2) or time.perf_counter() >= end:
+                    break
+                continue
+            c = min(self._next_t, key=self._next_t.__getitem__)
+            slot = self._next_t[c]
             if slot >= end:
                 break
             now = time.perf_counter()
@@ -274,6 +318,7 @@ class Scheduler:
                 while next_report <= now:
                     next_report += self.report_every
             self._heartbeats(now)
+            self._publish_health(now)
             if self.show and (slot - now > GUI_PUMP_MIN_IDLE_S or now - self._last_pump > GUI_PUMP_MAX_GAP_S):
                 g = time.perf_counter()
                 self._pump_gui()
@@ -288,10 +333,11 @@ class Scheduler:
             if skipped:  # this camera's window(s) passed before we could start
                 window.skip(c, skipped)
                 total.skip(c, skipped)
-                next_t[c] = slot
+                self._next_t[c] = slot
                 continue
             self._process(c, window, total)
-            next_t[c] = slot + self.interval
+            if c in self._next_t:
+                self._next_t[c] = slot + self.interval
 
         now = time.perf_counter()
         last = window.summary(now)
@@ -301,6 +347,23 @@ class Scheduler:
         log_summary("perf-total", summary, self.readers)
         self._log_notifier()
         return summary
+
+    def _publish_health(self, now: float) -> None:
+        """Every 0.5 s: a /health snapshot for the web server (built here, so the server never reads live state)."""
+        if self.hub is None or now < self._health_next:
+            return
+        self._health_next = now + HANDOFF_S
+        wall = time.time()
+        cams = {}
+        for c, r in self.readers.items():
+            dq = self._proc_times.setdefault(c, deque())
+            while dq and now - dq[0] > 5.0:
+                dq.popleft()
+            fr = r.latest()
+            cams[c] = {"status": r.status.value, "input_fps": round(r.fps, 1), "processed_fps": round(len(dq) / 5.0, 1),
+                       "last_frame": None if fr is None else iso_time(wall - (now - fr.capture_t)),
+                       "open_incidents": self.engines[c].open_incident_count() if c in self.engines else 0}
+        self.hub.set_health({"crossing_check": self.crossing_check, "cameras": cams})
 
     def _heartbeats(self, now: float) -> None:
         """Every HEARTBEAT_INTERVAL_S per camera: status + processed FPS to the notifier (camera_health + msg 6)."""
@@ -365,6 +428,14 @@ class Scheduler:
                     self._submit(c, events, fr.image, t_wall, result)
             t_post = time.perf_counter()
             self._hb_frames[c] += 1
+            self._proc_times.setdefault(c, deque()).append(t_post)
+            if self.hub is not None and t_post - self._pub_last.get(c, 0.0) >= HANDOFF_S:
+                self._pub_last[c] = t_post  # references only: the web server draws and encodes, if anyone watches
+                r = self.readers[c]
+                e = self.engines.get(c)
+                self.hub.publish(c, fr.image, result, self.pipelines[c].zones.zones, [
+                    f"cam{c} {r.status.value}  in {r.fps:.1f} fps  detect {(t_det - t_start) * 1e3:.0f} ms",
+                    f"tracks {len(result.workers)}  open incidents {e.open_incident_count() if e else 0}"])
             if self.show:
                 self._show(c, fr.image, result, (t_det - t_start) * 1e3)
             self._errors = 0
@@ -385,6 +456,108 @@ class Scheduler:
             w.note_zones(c, workers=len(result.workers), in_prep=result.in_prep_count(self.pipelines[c].prep_ids),
                          ignored_persons=len(result.ignored_persons), dropped_parts=len(result.dropped_parts),
                          removed_objects=len(result.removed))
+
+    # ------------------------------------------------------------------ reload (POST /reload)
+
+    def _check_reload(self) -> None:
+        if self.reload_event is not None and self.reload_event.is_set():
+            self.reload_event.clear()
+            self._reload()
+
+    def _reload(self) -> None:
+        """Re-read the settings and apply only what changed (see worker/reload.py for validation and diff)."""
+        if self.reloader is None or self.settings is None:
+            log.warning("reload requested, but this scheduler has no settings loader")
+            return
+        t_start = time.perf_counter()
+        try:
+            fresh = self.reloader.load()
+        except Exception:
+            log.exception("reload: cannot read the settings from the DB – keeping the current settings")
+            return
+        new, errors = validate(self.settings, fresh)
+        d = diff(self.settings, new)
+        now = time.time()
+        closes = []
+        zone_cams = {zone_camera(z, self.settings, new) for z in d.changed_zones}
+        objects = zone_object_classes(new)
+        for c, p in self.pipelines.items():
+            p.object_classes = objects
+            if c in zone_cams:
+                p.set_zones(new.zones_for(c))
+        for e in self.engines.values():
+            closes += e.reload(new.rules.values(), new.hazards, d.changed_rules, d.closed_rules, d.changed_zones, now)
+        restarted, added, removed, kept_cli = [], [], [], []
+        for cid in d.changed_cameras:
+            if self.reloader.cli_sources:
+                kept_cli.append(cid)
+                continue
+            cam = new.cameras.get(cid)
+            want = cam is not None and cam.enabled and bool(cam.rtsp_url)
+            if cid in self.readers and not want:
+                closes += self._remove_camera(cid, now)
+                removed.append(cid)
+            elif cid in self.readers:
+                closes += self._restart_camera(cid, cam.rtsp_url)
+                restarted.append(cid)
+            elif want:
+                self._add_camera(cid, cam.rtsp_url, new)
+                added.append(cid)
+        if self.notifier is not None:
+            for ev in closes:
+                self.notifier.submit(CloseJob(ev))
+        self.settings = new
+        ms = (time.perf_counter() - t_start) * 1e3
+        if d.empty() and not errors:
+            log.info("reload: nothing changed (%.0f ms)", ms)
+            return
+        log.info("reload: rules changed %s; rules closed %s; rules added %s; zones changed %s; cameras restarted %s, "
+                 "added %s, removed %s, not restarted (command-line sources) %s; closed %d incident(s); "
+                 "%d rules active, %d open incident(s) kept; %d error(s) (%.0f ms)",
+                 [x for v in d.changed_rules.values() for x in v], list(d.closed_rules.values()),
+                 sorted(d.added_rules), list(d.changed_zones.values()), restarted, added, removed, kept_cli,
+                 len(closes), sum(len(e.rules) for e in self.engines.values()),
+                 sum(e.open_incident_count() for e in self.engines.values()), len(errors), ms)
+        log_rules(self.engines)
+
+    def _restart_camera(self, cid: int, url: str) -> list:
+        closes = restart_camera(self.pipelines[cid], self.engines.get(cid), "camera restarted")
+        self.readers[cid].stop()  # no join: the old thread ends on its own
+        self.readers[cid] = self.reloader.start_reader(cid, url)
+        self._last_seq[cid], self._pass[cid] = 0, 0
+        log.info("cam%d: source changed – reader restarted (%s)", cid, redact(url))
+        return closes
+
+    def _remove_camera(self, cid: int, now: float) -> list:
+        e = self.engines.pop(cid, None)
+        closes = e.close_all(now, "camera disabled") if e is not None else []
+        self.readers.pop(cid).stop()
+        self.pipelines.pop(cid, None)
+        for dct in (self._next_t, self._hb_last, self._hb_next, self._last_seq, self._pass, self._pub_last,
+                    self._proc_times, self._hb_frames):
+            dct.pop(cid, None)
+        if self.hub is not None:
+            self.hub.set_cameras(self.readers)
+        log.info("cam%d: disabled – reader stopped", cid)
+        return closes
+
+    def _add_camera(self, cid: int, url: str, ws: WorkerSettings) -> None:
+        fps = 1.0 / self.interval
+        self.readers[cid] = self.reloader.start_reader(cid, url)
+        self.pipelines[cid] = CameraPipeline(cid, ws.zones_for(cid), fps, zone_object_classes(ws))
+        self.engines[cid] = RuleEngine(cid, ws.rules_for(cid), ws.hazards, fps,
+                                       track_keep_s=self.pipelines[cid].tracker.keep_s_effective,
+                                       crossing_check=self.reloader.crossing_check)
+        now = time.perf_counter()
+        self._next_t[cid] = now
+        self._hb_last[cid], self._hb_next[cid] = now, now + HEARTBEAT_INTERVAL_S
+        self._last_seq[cid], self._pass[cid], self._pub_last[cid], self._hb_frames[cid] = 0, 0, 0.0, 0
+        self._proc_times[cid] = deque()
+        self._window.add_camera(cid)
+        self._total.add_camera(cid)
+        if self.hub is not None:
+            self.hub.set_cameras(self.readers)
+        log.info("cam%d: enabled – reader started (%s)", cid, redact(url))
 
     def _show(self, c: int, image, result: FrameResult, det_ms: float) -> None:
         r = self.readers[c]
@@ -487,6 +660,7 @@ def _run(args: argparse.Namespace, settings) -> int:
     for r in readers.values():
         r.start()
     notifier: Notifier | None = None
+    web: WebServer | None = None
     engines: dict[int, RuleEngine] = {}
     try:
         obj_classes = zone_object_classes(ws)
@@ -507,24 +681,28 @@ def _run(args: argparse.Namespace, settings) -> int:
         engines = build_engines(ws, pipelines, fps, crossing_check=args.crossing_check)
         log.info("crossing check (pure ID swaps): %s", "ON (--crossing-check, window = rule window_s + 10 s)"
                  if args.crossing_check else "OFF (default; turn on with --crossing-check)")
-        for c, e in engines.items():
-            log.info("cam%d rules: %s", c, "; ".join(
-                f"{r.hazard_id} zones={list(r.zone_ids)} conf>={r.conf_threshold} window={r.window_s:g}s "
-                f"ratio>={r.min_ratio} end_gap={r.end_gap_s:g}s cooldown={r.cooldown_s:g}s {r.severity}"
-                for r in e.rules) or "none")
+        log_rules(engines)
         if not settings.internal_token:
             log.warning("RADS_INTERNAL_TOKEN is empty: the API will reject the worker's messages")
         notifier = Notifier(evidence_dir=settings.evidence_dir, api_url=settings.api_url,
                             token=settings.internal_token, model_version=detector.model_version)
         notifier.start()
+        hub = FrameHub(readers)
+        web = WebServer(hub, settings.internal_token, crossing_check=args.crossing_check)
+        web.start()
+        reloader = Reloader(load=load_settings, cli_sources=bool(args.source1 or args.source2), retry_s=args.retry,
+                            crossing_check=args.crossing_check)
 
         Scheduler(readers, detector, pipelines, interval=args.interval, show=args.show,
                   display_width=args.display_width, report_every=args.report_every, duration=args.duration,
-                  stop=stop, engines=engines, notifier=notifier, settings=ws).run()
+                  stop=stop, engines=engines, notifier=notifier, settings=ws, hub=hub,
+                  reload_event=web.reload_event, reloader=reloader, crossing_check=args.crossing_check).run()
     except Exception:
         log.exception("worker failed")
         return 1
     finally:
+        if web is not None:
+            web.stop()
         for r in readers.values():
             r.stop()
         if notifier is not None:  # clean stop: close open incidents, then let the notifier finish

@@ -158,3 +158,18 @@ def draw_evidence(frame: np.ndarray, zones, dets: list[dict[str, Any]], workers,
                fs=0.5 * k, tt=max(1, round(k)))
     draw_overlay(frame, title_lines, origin=(int(8 * k), int(8 * k)), k=k)
     return frame
+
+
+def annotate(image: np.ndarray, result, zones, width: int, lines: list[str]) -> np.ndarray:
+    """Live-view image (preview window and /stream): a resized COPY of `image` with zones, kept detections, ignored
+    items (dark grey), untracked persons (grey), workers with IDs, H/M/A states and feet dots, and an overlay.
+    `result` is a FrameResult (duck-typed); the shared frame itself is never drawn on."""
+    img, scale = resize_for_display(image, width)
+    draw_zones(img, zones, scale)
+    draw_detections(img, result.ignored_persons + result.dropped_parts + result.removed, scale,
+                    color=DARK_GREY, thickness=1, prefix="ign ")
+    draw_detections(img, [d for d in result.dets if d["cls_name"] != "person"], scale)
+    draw_detections(img, result.untracked, scale, color=GREY, thickness=1)
+    draw_workers(img, result.workers, scale)
+    draw_overlay(img, lines)
+    return img

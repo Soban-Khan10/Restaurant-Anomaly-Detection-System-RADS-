@@ -265,6 +265,53 @@ class RuleEngine:
         self._overlaps.clear()
         return events  # type: ignore[return-value]
 
+    def reload(self, rules: Iterable[Rule], hazards: dict[str, Hazard], changed_rule_ids: Iterable[int],
+               close_rule_ids: Iterable[int], changed_zone_ids: Iterable[int], t: float) -> list[IncidentClose]:
+        """Apply new settings without losing unrelated state (POST /reload).
+
+        - close_rule_ids (rule disabled, deleted, or its zones changed): close its open incidents, drop its state.
+        - changed_rule_ids (other values changed): reset its windows and cooldowns; an open incident stays open and
+          continues under the new values.
+        - changed_zone_ids: close open incidents of zone hazards / phone spots in those zones, drop that state and the
+          spots there.
+        - everything else keeps its state, open incidents and cooldowns.
+        """
+        changed, closing, zones = set(changed_rule_ids), set(close_rule_ids), set(changed_zone_ids)
+        new_rules = [r for r in rules if r.enabled and r.camera_id == self.camera_id and r.hazard_id in hazards]
+        by_id = {r.rule_id: r for r in new_rules}
+        events: list[Event] = []
+        for sk, st in list(self._states.items()):
+            hz, key = sk
+            rid = st.rule.rule_id
+            zone_tied = key[0] in ("zone", "spot") and key[1] in zones
+            if rid in closing or rid not in by_id or zone_tied:
+                if st.incident is not None:
+                    reason = "rule changed" if (rid in closing or rid not in by_id) else "zone changed"
+                    self._close(st, hz, t, st.incident.last_violation_t, reason, events)
+                del self._states[sk]
+            elif rid in changed:
+                st.rule = by_id[rid]
+                st.obs.clear()
+                st.violation_times.clear()
+                st.cooldown_until = -math.inf
+            else:
+                st.rule = by_id[rid]
+        for hz_zone in list(self._spots):
+            hz, z = hz_zone
+            still_used = any(r.hazard_id == hz and z in r.zone_ids for r in new_rules)
+            gone_rule = any(r.rule_id in closing for r in self.rules if r.hazard_id == hz and z in r.zone_ids)
+            if z in zones or gone_rule or not still_used:
+                del self._spots[hz_zone]
+        self.rules = new_rules
+        self.hazards = hazards
+        worker_rules = [r for r in new_rules if hazards[r.hazard_id].tied_to == TiedTo.WORKER]
+        self._max_worker_cooldown = max((r.cooldown_s for r in worker_rules), default=0.0)
+        self._max_crossing_s = max((crossing_window(r) for r in worker_rules), default=CROSSING_EXTRA_S)
+        return events  # type: ignore[return-value]
+
+    def open_incident_count(self) -> int:
+        return sum(1 for st in self._states.values() if st.incident is not None)
+
     def open_incidents(self) -> list[tuple[str, Key]]:
         return [k for k, st in self._states.items() if st.incident is not None]
 

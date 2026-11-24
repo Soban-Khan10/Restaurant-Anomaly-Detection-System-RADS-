@@ -68,6 +68,7 @@ class WorkerSettings:
     zones: dict[int, Zone] = field(default_factory=dict)
     hazards: dict[str, Hazard] = field(default_factory=dict)
     rules: dict[int, Rule] = field(default_factory=dict)
+    bad_zone_ids: tuple[int, ...] = ()  # zones whose polygon JSON could not be parsed (skipped)
 
     def zones_for(self, camera_id: int) -> list[Zone]:
         """Active zones of one camera."""
@@ -106,11 +107,13 @@ def load_settings(engine: Engine | None = None) -> WorkerSettings:
             for r in con.execute(select(t["cameras"]))
         }
         zones = {}
+        bad: list[int] = []
         for r in con.execute(select(t["zones"])):
             try:
                 poly = parse_polygon(r.polygon)
             except (ValueError, TypeError) as e:
                 log.warning("zone %d (%s): bad polygon JSON, skipped: %s", r.zone_id, r.name, e)
+                bad.append(r.zone_id)
                 continue
             zones[r.zone_id] = Zone(r.zone_id, r.camera_id, r.name, ZoneType(r.type), poly, bool(r.active))
         hazards = {
@@ -126,7 +129,7 @@ def load_settings(engine: Engine | None = None) -> WorkerSettings:
                             r.severity, tuple(sorted(rz.get(r.rule_id, ()))))
             for r in con.execute(select(t["rules"]))
         }
-    s = WorkerSettings(cameras, zones, hazards, rules)
+    s = WorkerSettings(cameras, zones, hazards, rules, tuple(bad))
     log.info("settings loaded: %d cameras, %d zones, %d hazards, %d rules",
              len(cameras), len(zones), len(hazards), len(rules))
     return s

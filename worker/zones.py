@@ -57,6 +57,16 @@ def box_area(box: Box) -> float:
     return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
 
 
+def polygon_ok(points) -> bool:
+    """A usable zone polygon: at least 3 points and a positive area (after repairing self-intersections)."""
+    if len(points) < 3:
+        return False
+    g = Polygon(points)
+    if not g.is_valid:
+        g = make_valid(g)
+    return not g.is_empty and g.area > 0
+
+
 @dataclass(frozen=True)
 class FrameCheck:
     zone_id: int
