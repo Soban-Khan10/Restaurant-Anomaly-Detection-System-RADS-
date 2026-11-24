@@ -135,7 +135,8 @@ class FakeWorker:
             self.notifier.post(path, IncidentRef(incident_id=incident_id).model_dump())
 
     def rules(self) -> list[dict[str, Any]]:
-        """Enabled rules on enabled cameras that have at least one active zone (re-read each time, like reload)."""
+        """Enabled rules on enabled cameras with at least one active prep/waste zone (re-read each time, like
+        reload). Zones come only from rule_zones, never an ignore zone."""
         with self.Session() as s:
             rows = s.execute(text("""
                 SELECT r.rule_id, r.hazard_id, r.camera_id, r.conf_threshold, r.severity,
@@ -145,7 +146,7 @@ class FakeWorker:
                 JOIN hazards h ON h.hazard_id = r.hazard_id
                 JOIN cameras c ON c.camera_id = r.camera_id AND c.enabled = 1
                 JOIN rule_zones rz ON rz.rule_id = r.rule_id
-                JOIN zones z ON z.zone_id = rz.zone_id AND z.active = 1
+                JOIN zones z ON z.zone_id = rz.zone_id AND z.active = 1 AND z.type != 'ignore'
                 WHERE r.enabled = 1
                 GROUP BY r.rule_id ORDER BY r.rule_id""")).mappings().all()
         return [{**r, "zone_ids": [int(z) for z in r["zone_ids"].split(",")]} for r in rows]
@@ -365,7 +366,8 @@ def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
         pts = [tuple(p) for p in json.loads(z["polygon"])]
         colour = ZONE_COLOURS.get(z["type"], (255, 255, 255)) if z["active"] else (90, 90, 90)
         d.line(pts + [pts[0]], fill=colour, width=max(w // 320, 2))
-        d.text((pts[0][0] + 10, pts[0][1] + 10), f"{z['name']} ({z['type']})", fill=colour, font=small)
+        label = "Ignored area (customers / outside)" if z["type"] == "ignore" else f"{z['name']} ({z['type']})"
+        d.text((pts[0][0] + 10, pts[0][1] + 10), label, fill=colour, font=small)
     stamp = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
     d.text((w // 40, h // 8 + h // 40), f"{camera['name']}  |  {stamp}  |  frame {n}", fill=(255, 255, 255), font=big)
     label = "FAKE WORKER - test pattern (scripts/fake_incidents.py)" if video is None else "FAKE WORKER - video file"

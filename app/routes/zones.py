@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi import status as http
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import diff, write_audit
@@ -142,6 +143,14 @@ def _camera_size(db: Session, camera_id: int) -> tuple[int | None, int | None]:
     return row[0], row[1]
 
 
+ZONE_IN_USE = ("Incidents refer to this zone, so it cannot be deleted; deactivate it instead "
+               "(PATCH the zone with active = false)")
+
+
+def _has_incidents(db: Session, zone_id: int) -> bool:
+    return db.execute(text("SELECT 1 FROM incidents WHERE zone_id = :z LIMIT 1"), {"z": zone_id}).first() is not None
+
+
 def _audit_values(z: dict[str, Any]) -> dict[str, Any]:
     return {k: z[k] for k in ("camera_id", "name", "type", "polygon", "active")}
 
@@ -221,14 +230,18 @@ def update_zone(zone_id: int, body: ZoneUpdate, request: Request, response: Resp
 def delete_zone(zone_id: int, request: Request, user: CurrentUser = Depends(settings_role),
                 db: Session = Depends(get_db), worker: WorkerClient = Depends(get_worker)) -> Response:
     old = _row(db, zone_id)
-    if db.execute(text("SELECT 1 FROM incidents WHERE zone_id = :z LIMIT 1"), {"z": zone_id}).first():
-        raise HTTPException(http.HTTP_409_CONFLICT, "This zone has incidents; deactivate it instead (active = false)")
+    if _has_incidents(db, zone_id):
+        raise HTTPException(http.HTTP_409_CONFLICT, ZONE_IN_USE)
     for (rule_id,) in db.execute(text(
             "SELECT rz.rule_id FROM rule_zones rz WHERE rz.zone_id = :z AND "
             "(SELECT COUNT(*) FROM rule_zones x WHERE x.rule_id = rz.rule_id) = 1"), {"z": zone_id}):
         raise HTTPException(http.HTTP_409_CONFLICT,
                             f"Rule {rule_id} uses only this zone; give the rule another zone or delete it first")
-    db.execute(text("DELETE FROM zones WHERE zone_id = :z"), {"z": zone_id})  # rule_zones: ON DELETE CASCADE
+    try:
+        db.execute(text("DELETE FROM zones WHERE zone_id = :z"), {"z": zone_id})  # rule_zones: ON DELETE CASCADE
+    except IntegrityError:  # incidents.zone_id has no cascade: the worker recorded one after the check above
+        db.rollback()
+        raise HTTPException(http.HTTP_409_CONFLICT, ZONE_IN_USE) from None
     write_audit(db, "zone_delete", user_id=user.user_id, target_type="zone", target_id=zone_id,
                 details={"old": _audit_values(old), "removed_from_rules": old["rule_ids"]}, request=request)
     db.commit()

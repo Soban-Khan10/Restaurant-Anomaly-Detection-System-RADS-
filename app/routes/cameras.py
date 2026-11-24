@@ -16,6 +16,7 @@ from fastapi import status as http
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import diff, write_audit
@@ -209,9 +210,14 @@ def delete_camera(camera_id: int, request: Request, user: CurrentUser = Depends(
         raise HTTPException(http.HTTP_409_CONFLICT,
                             "This camera has incidents or health history; disable it instead (enabled = false)")
     # Its own rules and zones go with it (rule_zones rows are removed by ON DELETE CASCADE).
-    rules = db.execute(text("DELETE FROM rules WHERE camera_id = :c RETURNING rule_id"), {"c": camera_id}).all()
-    zones = db.execute(text("DELETE FROM zones WHERE camera_id = :c RETURNING zone_id"), {"c": camera_id}).all()
-    db.execute(text("DELETE FROM cameras WHERE camera_id = :c"), {"c": camera_id})
+    try:
+        rules = db.execute(text("DELETE FROM rules WHERE camera_id = :c RETURNING rule_id"), {"c": camera_id}).all()
+        zones = db.execute(text("DELETE FROM zones WHERE camera_id = :c RETURNING zone_id"), {"c": camera_id}).all()
+        db.execute(text("DELETE FROM cameras WHERE camera_id = :c"), {"c": camera_id})
+    except IntegrityError:  # the worker wrote an incident or health row after the check above
+        db.rollback()
+        raise HTTPException(http.HTTP_409_CONFLICT,
+                            "This camera has incidents or health history; disable it instead (enabled = false)") from None
     write_audit(db, "camera_delete", user_id=user.user_id, target_type="camera", target_id=camera_id,
                 details={"old": _audit_values(old), "deleted_rules": [r[0] for r in rules],
                          "deleted_zones": [z[0] for z in zones]}, request=request)

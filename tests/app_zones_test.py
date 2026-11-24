@@ -22,9 +22,11 @@ def create(ctx, user="tech", **over):
 def test_list_get_and_roles(ctx):
     h = ctx.headers("tech")
     all_zones = ctx.client.get("/api/zones", headers=h).json()
-    assert [(z["camera_id"], z["type"]) for z in all_zones] == [(1, "prep"), (1, "waste"), (2, "prep")]
+    seeded = ctx.sql("SELECT camera_id, type FROM zones ORDER BY camera_id, zone_id")
+    assert [(z["camera_id"], z["type"]) for z in all_zones] == [(s["camera_id"], s["type"]) for s in seeded]
+    assert (1, "prep") in [(s["camera_id"], s["type"]) for s in seeded]
     cam1 = ctx.client.get("/api/zones?camera_id=1", headers=h).json()
-    assert len(cam1) == 2
+    assert {z["camera_id"] for z in cam1} == {1} and len(cam1) == sum(s["camera_id"] == 1 for s in seeded)
     prep1 = cam1[0]
     assert isinstance(prep1["polygon"], list) and len(prep1["rule_ids"]) == 4  # H-01, H-04, H-06, H-08
     assert ctx.client.get(f"/api/zones/{prep1['zone_id']}", headers=h).json() == prep1

@@ -1,8 +1,8 @@
 """/api/rules CRUD (Admin/Technical). One rule per hazard per camera.
 
-Validation: conf_threshold 0.05–0.95, window 1–30 s, min_ratio 0.1–1, end_gap 1–60 s, cooldown 0–600 s,
+Validation: conf_threshold 0.05–0.95, window 1–30 s, min_ratio 0.1–1, end_gap 1–120 s, cooldown 0–600 s,
 severity Low/Medium/High; at least one zone, all on the rule's camera, of the type the hazard needs
-(H-05 -> waste, others -> prep). Audit rows store old and new values (including zone ids).
+(H-05 -> waste, others -> prep). Ignore zones can never be attached to a rule. Audit rows store old and new values (including zone ids).
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi import status as http
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import diff, write_audit
@@ -19,11 +20,12 @@ from app.auth import ROLES_SETTINGS
 from app.deps import CurrentUser, get_db, require_role
 from app.routes.zones import required_zone_type
 from app.worker import WorkerClient, get_worker, reload_after_save
-from shared.contract import HazardId, Severity
+from shared.contract import HazardId, Severity, ZoneType
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 settings_role = require_role(*ROLES_SETTINGS)
 
+END_GAP_MAX_S = 120  # H-04 (phone lying still) uses 60
 VALUE_FIELDS = ("enabled", "conf_threshold", "window_s", "min_ratio", "end_gap_s", "cooldown_s", "severity")
 
 
@@ -38,7 +40,8 @@ class RuleValues(BaseModel):
     conf_threshold: float | None = Field(None, ge=0.05, le=0.95, description="minimum detection confidence")
     window_s: float | None = Field(None, ge=1, le=30, description="seconds looked at before deciding")
     min_ratio: float | None = Field(None, ge=0.1, le=1, description="share of the window the violation must be seen")
-    end_gap_s: float | None = Field(None, ge=1, le=60, description="seconds without the violation that end it")
+    end_gap_s: float | None = Field(None, ge=1, le=END_GAP_MAX_S,
+                                    description="seconds without the violation that end it")
     cooldown_s: float | None = Field(None, ge=0, le=600, description="quiet time after an incident")
     severity: Severity | None = None
     zone_ids: list[int] | None = Field(None, min_length=1, max_length=20)
@@ -53,7 +56,7 @@ class RuleCreate(RuleValues):
     conf_threshold: float = Field(0.45, ge=0.05, le=0.95)
     window_s: float = Field(5, ge=1, le=30)
     min_ratio: float = Field(0.70, ge=0.1, le=1)
-    end_gap_s: float = Field(5, ge=1, le=60)
+    end_gap_s: float = Field(5, ge=1, le=END_GAP_MAX_S)
     cooldown_s: float = Field(60, ge=0, le=600)
     severity: Severity = Severity.MEDIUM
     zone_ids: list[int] = Field(min_length=1, max_length=20)
@@ -99,6 +102,9 @@ def _check_zones(db: Session, hazard_id: str, camera_id: int, zone_ids: list[int
         if rows[z].camera_id != camera_id:
             raise HTTPException(http.HTTP_422_UNPROCESSABLE_CONTENT,
                                 f"Zone '{rows[z].name}' is on camera {rows[z].camera_id}, not camera {camera_id}")
+        if rows[z].type == ZoneType.IGNORE:
+            raise HTTPException(http.HTTP_422_UNPROCESSABLE_CONTENT,
+                                f"'{rows[z].name}' is an ignored area; ignored areas cannot be used by a rule")
         if rows[z].type != need.value:
             raise HTTPException(http.HTTP_422_UNPROCESSABLE_CONTENT,
                                 f"{hazard_id} needs a {need.value} zone; '{rows[z].name}' is a {rows[z].type} zone")
@@ -197,7 +203,12 @@ def delete_rule(rule_id: int, request: Request, user: CurrentUser = Depends(sett
     old = _row(db, rule_id)
     if db.execute(text("SELECT 1 FROM incidents WHERE rule_id = :r LIMIT 1"), {"r": rule_id}).first():
         raise HTTPException(http.HTTP_409_CONFLICT, "This rule has incidents; disable it instead (enabled = false)")
-    db.execute(text("DELETE FROM rules WHERE rule_id = :r"), {"r": rule_id})  # rule_zones: ON DELETE CASCADE
+    try:
+        db.execute(text("DELETE FROM rules WHERE rule_id = :r"), {"r": rule_id})  # rule_zones: ON DELETE CASCADE
+    except IntegrityError:  # the worker recorded an incident for it after the check above
+        db.rollback()
+        raise HTTPException(http.HTTP_409_CONFLICT,
+                            "This rule has incidents; disable it instead (enabled = false)") from None
     write_audit(db, "rule_delete", user_id=user.user_id, target_type="rule", target_id=rule_id,
                 details={"old": _audit_values(old)}, request=request)
     db.commit()

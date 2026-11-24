@@ -1,6 +1,7 @@
 """Phase 4: /api/cameras CRUD, rtsp_url visibility, audit old/new, worker reload after save."""
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
@@ -105,12 +106,14 @@ def test_update_audit_masks_password_and_stores_old_new(ctx):
 
 def test_frame_size_must_fit_existing_zones(ctx):
     h = ctx.headers("tech")
-    # The seeded zones are drawn for 1920x1080.
-    r = ctx.client.patch("/api/cameras/1", json={"frame_width": 1280, "frame_height": 720}, headers=h)
-    assert r.status_code == 409 and "outside 1280x720" in r.json()["detail"]
-    assert ctx.client.patch("/api/cameras/1", json={"frame_width": 1920, "frame_height": 1080},
-                            headers=h).status_code == 200
-    assert ctx.client.patch("/api/cameras/1", json={"frame_width": 1920}, headers=h).status_code == 422
+    # Smallest frame that still contains every seeded zone of camera 1 (works with any config/defaults.yaml).
+    pts = [p for z in ctx.sql("SELECT polygon FROM zones WHERE camera_id = 1") for p in json.loads(z["polygon"])]
+    w, hgt = max(x for x, _ in pts), max(y for _, y in pts)
+    r = ctx.client.patch("/api/cameras/1", json={"frame_width": w - 1, "frame_height": hgt}, headers=h)
+    assert r.status_code == 409 and f"outside {w - 1}x{hgt}" in r.json()["detail"]
+    assert ctx.client.patch("/api/cameras/1", json={"frame_width": w, "frame_height": hgt},
+                            headers=h).status_code == 200  # zones touching the edge still fit
+    assert ctx.client.patch("/api/cameras/1", json={"frame_width": w}, headers=h).status_code == 422
 
 
 def test_update_nulls_rejected(ctx):
@@ -129,12 +132,15 @@ def test_delete_new_camera(ctx):
 
 
 def test_delete_camera_without_history_takes_its_rules_and_zones(ctx):
+    rules = sorted(r["rule_id"] for r in ctx.sql("SELECT rule_id FROM rules WHERE camera_id = 2"))
+    zones = sorted(z["zone_id"] for z in ctx.sql("SELECT zone_id FROM zones WHERE camera_id = 2"))
+    assert len(rules) == 4 and zones  # H-01, H-04, H-06, H-08 (no bin on camera 2)
     r = ctx.client.delete("/api/cameras/2", headers=ctx.headers("tech"))
     assert r.status_code == 204
     assert ctx.sql("SELECT * FROM rules WHERE camera_id = 2") == []
     assert ctx.sql("SELECT * FROM zones WHERE camera_id = 2") == []
     details = ctx.audit("camera_delete")[0]["details"]
-    assert len(details["deleted_rules"]) == 4 and len(details["deleted_zones"]) == 1
+    assert sorted(details["deleted_rules"]) == rules and sorted(details["deleted_zones"]) == zones
 
 
 def test_delete_camera_with_history_refused(ctx):
