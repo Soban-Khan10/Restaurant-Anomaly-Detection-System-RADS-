@@ -24,6 +24,16 @@ def get_evidence_dir() -> Path:
     return get_settings().evidence_dir
 
 
+def get_reports_dir() -> Path:
+    """rads_data/reports (overridden in tests)."""
+    return get_settings().reports_dir
+
+
+def get_backups_dir() -> Path:
+    """rads_data/backups (overridden in tests)."""
+    return get_settings().data_dir / "backups"
+
+
 def require_internal(
     request: Request,
     token: str | None = Header(default=None, alias=INTERNAL_HEADER, include_in_schema=False),

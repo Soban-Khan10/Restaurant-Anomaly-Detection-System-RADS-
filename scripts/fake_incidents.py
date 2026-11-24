@@ -19,6 +19,8 @@ Both require X-RADS-Internal, like the real worker.
     python scripts/fake_incidents.py --no-incidents     # heartbeats + /reload + /stream only
     python scripts/fake_incidents.py --video clip.mp4   # stream a video file (needs opencv-python)
     python scripts/fake_incidents.py --purge            # delete all fake incidents + their files (asks first)
+    python scripts/fake_incidents.py --backfill 200 --days 45   # 200 closed incidents spread over 45 past days,
+                                                    # some reviewed (test data for reports and retention), then exit
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ import random
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -149,7 +151,9 @@ class FakeWorker:
         return [{**r, "zone_ids": [int(z) for z in r["zone_ids"].split(",")]} for r in rows]
 
     # ---- message 2
-    def new_incident(self, rule: dict[str, Any] | None = None) -> int:
+    def new_incident(self, rule: dict[str, Any] | None = None, start: datetime | None = None) -> int:
+        """Open a new incident now (message 2 follows). With `start` (backfill), only write the rows."""
+        backfill = start is not None
         if rule is None:
             rules = self.rules()
             if not rules:
@@ -159,7 +163,7 @@ class FakeWorker:
         zone_id = rng.choice(rule["zone_ids"])
         track_id = rng.randint(1, 60) if rule["tied_to"] == TiedTo.WORKER else None
         conf = round(rng.uniform(max(rule["conf_threshold"], 0.5), 0.95), 3)
-        start = datetime.now(TZ)
+        start = start or datetime.now(TZ)
         start_iso = start.isoformat(timespec="seconds")
         x, y = rng.randint(200, 800), rng.randint(150, 350)
         box = (x, y, x + rng.randint(120, 300), y + rng.randint(150, 300))
@@ -186,11 +190,52 @@ class FakeWorker:
                       {"i": incident_id, "p": rel, "t": start_iso, "d": json.dumps(detections)})
             s.commit()
 
+        if backfill:
+            return incident_id
         self.open[incident_id] = (self.clock() + rng.uniform(self.min_duration, self.max_duration), [conf])
         log.info("NEW    incident %d  %s %s  cam%d  zone %d", incident_id, rule["hazard_id"],
                  rule["hazard_name"], rule["camera_id"], zone_id)
         self._notify(PATH_INCIDENT_NEW, incident_id)
         return incident_id
+
+    # ---- test data: past incidents
+    REVIEW_MIX = (("New", 25), ("Acknowledged", 15), ("Confirmed violation", 40), ("False alarm", 20))
+
+    def backfill(self, count: int, days: int, now: datetime | None = None) -> list[int]:
+        """`count` closed incidents at random times over the last `days` days, with evidence in the matching
+        (old) day folders. As TEST DATA they also get a random review status (which the real worker never
+        writes), and those left New are marked escalated, as the app would have done. No messages are sent."""
+        now = (now or datetime.now(TZ)).astimezone(TZ)
+        rules = self.rules()
+        if not rules:
+            raise RuntimeError("No enabled rules with zones; run scripts/seed.py")
+        with self.Session() as s:
+            reviewer = s.execute(text(
+                "SELECT u.user_id FROM users u JOIN roles r USING (role_id) WHERE u.active = 1 "
+                "AND r.name IN ('Manager', 'Admin') ORDER BY r.name = 'Admin', u.user_id")).scalar()
+        statuses, weights = zip(*self.REVIEW_MIX)
+        ids = []
+        span = max(days * 86400 - 900, 1)  # newest one at least 15 min old
+        for start in sorted(now - timedelta(seconds=900 + self.rng.uniform(0, span)) for _ in range(count)):
+            start = start.replace(microsecond=0)
+            iid = self.new_incident(self.rng.choice(rules), start=start)
+            end = start + timedelta(seconds=self.rng.randint(8, 180))
+            confs = [round(self.rng.uniform(0.45, 0.95), 3) for _ in range(self.rng.randint(3, 12))]
+            status = self.rng.choices(statuses, weights)[0]
+            review: dict[str, Any] = {"st": status, "by": None, "at": None, "esc": None}
+            if status == "New":
+                review["esc"] = (start + timedelta(minutes=10)).isoformat(timespec="seconds")
+            elif reviewer is not None:
+                review["by"] = reviewer
+                review["at"] = (start + timedelta(minutes=self.rng.randint(1, 30))).isoformat(timespec="seconds")
+            with self.Session() as s:
+                s.execute(text("UPDATE incidents SET end_time = :e, conf_avg = :a, conf_max = :m, status = :st, "
+                               "reviewed_by = :by, reviewed_at = :at, escalated_at = :esc WHERE incident_id = :i"),
+                          {"e": end.isoformat(timespec="seconds"), "a": round(sum(confs) / len(confs), 3),
+                           "m": max(confs), "i": iid, **review})
+                s.commit()
+            ids.append(iid)
+        return ids
 
     # ---- message 5
     def close_incident(self, incident_id: int) -> None:
@@ -436,9 +481,14 @@ def main() -> int:
                    help="no fake incidents: only heartbeats and the /reload + /stream stand-in")
     p.add_argument("--no-server", action="store_true", help="do not start the /reload + /stream stand-in")
     p.add_argument("--video", default=None, help="stream this video file instead of a test pattern")
+    p.add_argument("--backfill", type=int, default=None, metavar="N",
+                   help="create N closed past incidents (test data for reports/retention), then exit")
+    p.add_argument("--days", type=int, default=30, help="with --backfill: spread them over this many past days")
     args = p.parse_args()
     if args.min_duration > args.max_duration:
         p.error("--min-duration must not exceed --max-duration")
+    if args.backfill is not None and (args.backfill < 1 or args.days < 1):
+        p.error("--backfill and --days must be at least 1")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -461,6 +511,15 @@ def main() -> int:
             print("Nothing deleted.")
             return 0
         print(f"Deleted {purge(Session_, s.evidence_dir)} fake incident(s).")
+        return 0
+
+    if args.backfill:
+        w = FakeWorker(Session_, s.evidence_dir, None, random.Random(args.seed))
+        ids = w.backfill(args.backfill, args.days)
+        with Session_() as db:
+            first, last = db.execute(text("SELECT MIN(start_time), MAX(start_time) FROM incidents "
+                                          f"WHERE incident_id IN ({', '.join(map(str, ids))})")).one()
+        print(f"Created {len(ids)} past fake incidents ({ids[0]}-{ids[-1]}), {first[:10]} to {last[:10]}.")
         return 0
 
     notifier = None

@@ -32,7 +32,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.auth import hash_password  # noqa: E402
-from app.deps import get_db, get_evidence_dir  # noqa: E402
+from app.deps import get_backups_dir, get_db, get_evidence_dir, get_reports_dir  # noqa: E402
 from app.main import app  # noqa: E402
 from app import alerts, ws  # noqa: E402
 from app.worker import WorkerClient, get_worker  # noqa: E402
@@ -80,6 +80,7 @@ class Ctx:
     evidence_dir: Path
     senders: list  # fake alert senders used instead of configured WhatsApp/Telegram (empty = dashboard only)
     worker: WorkerStub
+    db_path: Path
 
     def sql(self, query: str, **params: Any) -> list[dict[str, Any]]:
         with self.Session() as s:
@@ -172,6 +173,8 @@ def ctx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[get_evidence_dir] = lambda: evidence_dir
+    app.dependency_overrides[get_reports_dir] = lambda: tmp_path / "reports"
+    app.dependency_overrides[get_backups_dir] = lambda: tmp_path / "backups"
     ws.hub.connections.clear()
     ws.cameras.last.clear()
     ws.cameras.marked_offline.clear()
@@ -182,7 +185,7 @@ def ctx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "http://127.0.0.1:8001", get_settings().internal_token, transport=httpx.MockTransport(worker))
     try:
         yield Ctx(TestClient(app), TestClient(app, client=("127.0.0.1", 50000)), Session_, ids, evidence_dir,
-                  senders, worker)
+                  senders, worker, db_path)
     finally:
         app.dependency_overrides.clear()
         engine.dispose()  # release the file so Windows can delete tmp_path

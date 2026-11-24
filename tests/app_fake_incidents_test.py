@@ -144,3 +144,29 @@ def test_purge_removes_only_fake_rows_and_files(ctx):
     assert not any(f.exists() for f in files)
     assert (ctx.evidence_dir / f"2026-12-02/cam1/{real}.jpg").exists()
     assert purge(ctx.Session, ctx.evidence_dir) == 0
+
+
+def test_backfill_creates_closed_past_incidents_in_old_day_folders(ctx):
+    from datetime import datetime, timedelta
+
+    from shared.contract import TZ
+
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=TZ)
+    w = _worker(ctx, notifier=None)
+    ids = w.backfill(40, days=45, now=now)
+    rows = ctx.sql("SELECT i.*, e.file_path FROM incidents i JOIN evidence e USING (incident_id) ORDER BY incident_id")
+    assert [r["incident_id"] for r in rows] == ids and len(ids) == 40
+    starts = [datetime.fromisoformat(r["start_time"]) for r in rows]
+    assert starts == sorted(starts)
+    assert min(starts) >= now - timedelta(days=45) and max(starts) <= now - timedelta(minutes=15)
+    for r in rows:
+        assert r["end_time"] > r["start_time"] and r["model_version"] == MODEL_VERSION
+        assert r["file_path"].startswith(r["start_time"][:10] + "/")
+        assert (ctx.evidence_dir / r["file_path"]).exists()
+        if r["status"] == "New":
+            assert r["escalated_at"] and r["reviewed_by"] is None  # the escalation job won't pick them up again
+        else:
+            assert r["reviewed_by"] == ctx.ids["manager"] and r["reviewed_at"] > r["start_time"]
+    assert len({r["status"] for r in rows}) >= 3
+    assert len({r["start_time"][:10] for r in rows}) > 20  # spread over many day folders
+    assert w.open == {} and ctx.sql("SELECT * FROM alerts") == []

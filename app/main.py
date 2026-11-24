@@ -10,15 +10,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
-from app import alerts, ws
-from app.routes import auth, cameras, evidence, incidents, internal, rules, users, zones
-from shared.config import get_settings
+from app import alerts, retention, ws
+from app.routes import admin, auth, cameras, evidence, incidents, internal, reports, rules, users, zones
+from shared.config import Settings, get_settings
 from shared.db import get_engine
 
 log = logging.getLogger("rads.app")
 
 # Vite dev server
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def add_jobs(scheduler: BackgroundScheduler, Session_: sessionmaker, s: Settings) -> None:
+    """Escalation every minute; retention + backup daily at 03:00 Pakistan time."""
+    scheduler.add_job(alerts.run_escalation, "interval", minutes=1, args=[Session_],
+                      id="escalation", max_instances=1, coalesce=True)
+    scheduler.add_job(retention.run_daily_maintenance, "cron", hour=3, minute=0,
+                      args=[Session_, s.evidence_dir, s.db_path, s.data_dir / "backups"],
+                      id="maintenance", max_instances=1, coalesce=True,
+                      misfire_grace_time=3600)  # still runs if the PC was busy or asleep at 03:00, up to 04:00
 
 
 @asynccontextmanager
@@ -38,11 +48,12 @@ async def lifespan(_: FastAPI):
     channels = [x.channel.value for x in alerts.configured_senders()]
     log.info("alert channels: dashboard%s", "".join(f", {c}" for c in channels))
 
-    # Escalation job every minute (APScheduler thread) + offline-camera watcher (asyncio task).
+    # Scheduled jobs (APScheduler thread) + offline-camera watcher (asyncio task).
     scheduler = BackgroundScheduler(timezone="Asia/Karachi")
-    scheduler.add_job(alerts.run_escalation, "interval", minutes=1, args=[sessionmaker(bind=get_engine())],
-                      id="escalation", max_instances=1, coalesce=True)
+    add_jobs(scheduler, sessionmaker(bind=get_engine()), s)
     scheduler.start()
+    log.info("daily maintenance (evidence > %d days, DB backup) next runs at %s", retention.RETENTION_DAYS,
+             scheduler.get_job("maintenance").next_run_time)
     watcher = asyncio.create_task(ws.offline_watch())
     try:
         yield
@@ -69,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(cameras.router)
     app.include_router(zones.router)
     app.include_router(rules.router)
+    app.include_router(reports.router)
+    app.include_router(admin.router)
     app.include_router(internal.router)
     app.include_router(ws.router)
     return app
