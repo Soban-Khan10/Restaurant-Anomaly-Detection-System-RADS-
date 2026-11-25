@@ -4,19 +4,22 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
-from app import alerts, retention, ws
+from app import alerts, log_redaction, retention, ws
 from app.routes import (admin, auth, cameras, evidence, incidents, internal, lookups, reports, rules, users,
                         zones)
 from shared.config import Settings, get_settings
+from shared.contract import TZ
 from shared.db import get_engine
 
 log = logging.getLogger("rads.app")
+log_redaction.install()  # uvicorn has set up its loggers before it imports the app: no tokens in any log line
 
 # Vite dev server (dashboard/, `npm run dev` on port 5173)
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -25,9 +28,10 @@ EXPOSED_HEADERS = ["X-RADS-Worker-Reload", "Content-Disposition"]
 
 
 def add_jobs(scheduler: BackgroundScheduler, Session_: sessionmaker, s: Settings) -> None:
-    """Escalation every minute; retention + backup daily at 03:00 Pakistan time."""
-    scheduler.add_job(alerts.run_escalation, "interval", minutes=1, args=[Session_],
-                      id="escalation", max_instances=1, coalesce=True)
+    """Every minute, and once right at startup: catch up missed first alerts, then escalation.
+    Daily at 03:00 Pakistan time: evidence retention + database backup."""
+    scheduler.add_job(alerts.run_minute_jobs, "interval", minutes=1, args=[Session_],
+                      id="escalation", max_instances=1, coalesce=True, next_run_time=datetime.now(TZ))
     scheduler.add_job(retention.run_daily_maintenance, "cron", hour=3, minute=0,
                       args=[Session_, s.evidence_dir, s.db_path, s.data_dir / "backups"],
                       id="maintenance", max_instances=1, coalesce=True,
@@ -45,6 +49,7 @@ async def lifespan(_: FastAPI):
         raise RuntimeError(f"No database at {s.db_path}; run scripts/init_db.py and scripts/seed.py")
     if not logging.getLogger().handlers:  # show rads.* INFO logs next to uvicorn's
         logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
+    log_redaction.install()  # again, for the handler basicConfig just added
     # APScheduler logs two INFO lines per job run (every minute); keep only its warnings and errors.
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
 

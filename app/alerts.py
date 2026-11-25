@@ -4,6 +4,9 @@
   Manager over each configured channel.
 * Escalation (every minute) -> incident still `New` 10 min after start and `escalated_at` empty: set escalated_at,
   `alerts` row (dashboard, kind escalation), text to every active Admin.
+* Catch-up (at startup, then every minute, before escalation) -> an incident the worker reported while the app was
+  down never got its first alert: write the dashboard row now; text Managers only if it started within the last
+  hour (older ones are left to escalation, so a long outage does not flood phones).
 * Each external send gets its own `alerts` row: `sent`, or `failed` with the error. A failed send never raises.
 
 Channels (configured in .env; nothing configured -> dashboard only):
@@ -31,6 +34,8 @@ from shared.contract import TZ, AlertChannel, AlertKind, AlertStatus, IncidentSt
 log = logging.getLogger("rads.app.alerts")
 
 ESCALATE_AFTER = timedelta(minutes=10)
+CATCH_UP_GRACE = timedelta(seconds=60)        # newer incidents are still being reported by the worker (message 2)
+CATCH_UP_TEXT_WITHIN = timedelta(minutes=60)  # missed incidents older than this get the dashboard row only
 HTTP_TIMEOUT_S = 10.0
 WHATSAPP_API = "https://graph.facebook.com/v21.0"
 TELEGRAM_API = "https://api.telegram.org"
@@ -204,6 +209,56 @@ def send_external(Session_: sessionmaker[Session], incident_id: int, kind: Alert
 
 def send_first_alerts(Session_: sessionmaker[Session], incident_id: int, senders: list[Sender] | None = None) -> int:
     return send_external(Session_, incident_id, AlertKind.FIRST, (RoleName.MANAGER,), senders)
+
+
+# ---------------------------------------------------------------- catch-up for missed first alerts
+
+def _started_within(start_time: str, now: datetime, span: timedelta) -> bool:
+    try:
+        start = datetime.fromisoformat(start_time)
+    except (TypeError, ValueError):
+        return False
+    start = start.replace(tzinfo=TZ) if start.tzinfo is None else start
+    return now - start <= span
+
+
+def catch_up_first_alerts(Session_: sessionmaker[Session], senders: list[Sender] | None = None,
+                          now: datetime | None = None) -> list[int]:
+    """First alerts for incidents the app never heard about (it was down when the worker sent message 2).
+
+    Every incident still `New` with no alerts row of kind `first`, and older than CATCH_UP_GRACE, gets its dashboard
+    alert now. WhatsApp/Telegram go out only for those that started within CATCH_UP_TEXT_WITHIN. Safe to repeat: an
+    incident with a first alert is never picked again, and record_dashboard_alert() refuses a second dashboard row
+    (also when message 2 arrives late). Returns the incident ids that got their dashboard alert now."""
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    with Session_() as db:
+        missed = db.execute(text(
+            "SELECT i.incident_id, i.start_time FROM incidents i WHERE i.status = :new AND i.start_time <= :grace "
+            "AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.incident_id = i.incident_id AND a.kind = :first) "
+            "ORDER BY i.incident_id"),
+            {"new": IncidentStatus.NEW.value, "first": AlertKind.FIRST.value,
+             "grace": (now - CATCH_UP_GRACE).isoformat(timespec="seconds")}).all()
+        caught = [(iid, start) for iid, start in missed if record_dashboard_alert(db, iid)]
+    if not caught:
+        return []
+    recent = [iid for iid, start in caught if _started_within(start, now, CATCH_UP_TEXT_WITHIN)]
+    ids = [iid for iid, _ in caught]
+    shown = ", ".join(map(str, ids[:20])) + (f" … (+{len(ids) - 20} more)" if len(ids) > 20 else "")
+    log.warning("first alert caught up for %d incident(s) reported while the app was down: %s; "
+                "WhatsApp/Telegram for %d of them (started within 60 min)", len(ids), shown, len(recent))
+    for iid in recent:
+        send_first_alerts(Session_, iid, senders)
+    return [iid for iid, _ in caught]
+
+
+def run_minute_jobs(Session_: sessionmaker[Session], senders: list[Sender] | None = None,
+                    now: datetime | None = None) -> None:
+    """The 1-minute job (also run once at startup): catch up missed first alerts, then escalate."""
+    try:
+        catch_up_first_alerts(Session_, senders, now)
+    except Exception:  # noqa: BLE001 – escalation must still run
+        log.exception("catching up missed first alerts failed")
+    run_escalation(Session_, senders, now)
 
 
 # ---------------------------------------------------------------- escalation job (every minute)
