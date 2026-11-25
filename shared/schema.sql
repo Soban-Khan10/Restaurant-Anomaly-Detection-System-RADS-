@@ -124,3 +124,18 @@ CREATE TABLE alerts (
   status      TEXT NOT NULL CHECK (status IN ('sent','failed')),
   error       TEXT
 );
+-- Pause monitoring. A pause is ACTIVE for a camera when (camera_id = that camera OR camera_id IS NULL)
+-- AND starts_at <= now AND (ends_at IS NULL OR ends_at > now) AND ended_at IS NULL  (shared.contract.active_pause).
+CREATE TABLE monitoring_pauses (
+  pause_id    INTEGER PRIMARY KEY,
+  camera_id   INTEGER REFERENCES cameras(camera_id),   -- NULL = all cameras
+  reason      TEXT NOT NULL CHECK (reason IN ('cleaning','closed','no_food_prep','maintenance','other')),
+  note        TEXT,
+  starts_at   TEXT NOT NULL,     -- ISO 8601 +05:00; may be in the future (planned pause)
+  ends_at     TEXT,              -- NULL = until resumed manually
+  created_by  INTEGER NOT NULL REFERENCES users(user_id),
+  created_at  TEXT NOT NULL,
+  ended_by    INTEGER REFERENCES users(user_id),       -- set when resumed early or cancelled
+  ended_at    TEXT
+);
+CREATE INDEX ix_pauses_active ON monitoring_pauses(camera_id, starts_at, ends_at);
