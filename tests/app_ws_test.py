@@ -106,7 +106,7 @@ def test_heartbeat_forwarded_as_camera_status(ctx):
         _initial(sock)
         body = _hb(2, "reconnecting", None)
         ctx.local.post("/internal/heartbeat", json=body, headers=INTERNAL)
-        assert sock.receive_json() == {"type": "camera.status", **body}
+        assert sock.receive_json() == {"type": "camera.status", **body, "detection": "active", "pause_reason": None}
 
 
 def test_unknown_incident_broadcasts_nothing(ctx):
