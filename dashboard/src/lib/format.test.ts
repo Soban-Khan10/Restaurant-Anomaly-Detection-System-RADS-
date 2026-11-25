@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { navFor, rolesFor } from "../nav";
+import {
+  daysInclusive, formatDateTime, formatDateTimeSeconds, formatDay, formatDuration, formatPercent, formatSeconds,
+  formatTime, pakistanDate, pakistanDateDaysAgo, timeAgo,
+} from "./format";
+
+describe("Pakistan time", () => {
+  it("shows server times in Asia/Karachi whatever the browser's zone", () => {
+    expect(formatTime("2026-11-24T09:05:00Z")).toBe("14:05");
+    expect(formatDateTime("2026-11-24T14:05:31+05:00")).toBe("24 Nov 2026, 14:05");
+  });
+
+  it("uses the Pakistan date for 'today' (19:30 UTC is already the next day there)", () => {
+    expect(pakistanDate(new Date("2026-11-24T19:30:00Z"))).toBe("2026-11-25");
+    expect(pakistanDateDaysAgo(6, new Date("2026-11-24T12:00:00Z"))).toBe("2026-11-18");
+  });
+});
+
+describe("durations and relative times", () => {
+  it("formats incident durations", () => {
+    expect(formatDuration("2026-11-24T10:00:00+05:00", "2026-11-24T10:00:45+05:00")).toBe("45 s");
+    expect(formatDuration("2026-11-24T10:00:00+05:00", "2026-11-24T10:03:05+05:00")).toBe("3 min 05 s");
+    expect(formatDuration("2026-11-24T10:00:00+05:00", "2026-11-24T11:07:00+05:00")).toBe("1 h 07 min");
+  });
+
+  it("says how long ago", () => {
+    const now = new Date("2026-11-24T10:00:00Z");
+    expect(timeAgo("2026-11-24T09:59:40Z", now)).toBe("just now");
+    expect(timeAgo("2026-11-24T09:48:00Z", now)).toBe("12 min ago");
+    expect(timeAgo("2026-11-24T07:00:00Z", now)).toBe("3 h ago");
+  });
+});
+
+describe("role-based menu (roles table)", () => {
+  const labels = (role: "Admin" | "Manager" | "Technical") => navFor(role).map((n) => n.label);
+
+  it("gives each role exactly its pages", () => {
+    expect(labels("Admin")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules", "Reports", "Users"]);
+    expect(labels("Manager")).toEqual(["Overview", "Incidents", "Detection rules", "Reports"]); // rules read-only
+    expect(labels("Technical")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules"]);
+    expect(navFor(undefined)).toEqual([]);
+  });
+
+  it("guards pages by the same roles", () => {
+    expect(rolesFor("/users")).toEqual(["Admin"]);
+    expect(rolesFor("/reports")).toEqual(["Admin", "Manager"]);
+    expect(rolesFor("/cameras")).toEqual(["Admin", "Technical"]);
+    expect(rolesFor("/incidents/42")).toEqual(["Admin", "Manager", "Technical"]);
+  });
+});
+
+describe("incident detail and report labels", () => {
+  it("formats seconds, percentages and calendar days", () => {
+    expect(formatDateTimeSeconds("2026-11-24T09:05:31Z")).toBe("24 Nov 2026, 14:05:31");
+    expect(formatDay("2026-11-05")).toBe("5 Nov 2026");
+    expect(daysInclusive("2026-11-18", "2026-11-24")).toBe(7);
+    expect(daysInclusive("2026-11-24", "2026-11-24")).toBe(1);
+    expect(formatPercent(0.784)).toBe("78%");
+    expect(formatPercent(null)).toBe("—");
+    expect([5, 1.5, 60, 90, 300].map(formatSeconds)).toEqual(["5 s", "1.5 s", "1 min", "1 min 30 s", "5 min"]);
+  });
+});
