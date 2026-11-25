@@ -107,7 +107,13 @@ def diff(old: WorkerSettings, new: WorkerSettings) -> SettingsDiff:
         if o is None or n is None:
             d.changed_zones[zid] = f"zone {zid}: {'added' if o is None else 'deleted'}"
         else:
-            what = [f for f in ("polygon", "type", "active") if getattr(o, f) != getattr(n, f)]
+            what = []
+            if o.polygon != n.polygon:
+                what.append(f"polygon changed ({len(o.polygon)}→{len(n.polygon)} points)")
+            if o.type != n.type:
+                what.append(f"type {o.type.value}→{n.type.value}")
+            if o.active != n.active:  # say which way: turned ON (0→1) or OFF (1→0)
+                what.append(f"active: {int(o.active)}->{int(n.active)} ({'ON' if n.active else 'OFF'})")
             if what:
                 d.changed_zones[zid] = f"zone {zid} '{n.name}' cam{n.camera_id}: {', '.join(what)}"
     for cid in sorted(set(old.cameras) | set(new.cameras)):

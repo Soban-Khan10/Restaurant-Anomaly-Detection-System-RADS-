@@ -25,6 +25,7 @@ if __package__ in (None, ""):  # allow `python worker/main.py`
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import argparse
+import csv
 import logging
 import math
 import queue
@@ -39,7 +40,7 @@ from typing import Any, Callable
 import cv2
 
 from shared.config import get_settings
-from shared.contract import HEARTBEAT_INTERVAL_S, TiedTo, ZoneType
+from shared.contract import HEARTBEAT_INTERVAL_S, CameraStatus, TiedTo, ZoneType
 from worker.detector import Detector
 from worker.draw import annotate as draw_annotate
 from worker.linking import Worker, link_parts
@@ -60,6 +61,7 @@ MAX_CONSECUTIVE_ERRORS = 50
 GUI_PUMP_MIN_IDLE_S = 0.025  # pump the preview window only when at least this much idle time is left
 GUI_PUMP_MAX_GAP_S = 1.0     # ...but at least once a second so the window stays responsive
 HANDOFF_S = 0.5              # frames + results to the web server, and the /health snapshot, every 0.5 s
+OFFLINE_CLOSE_S = 60.0       # a camera not online for longer: close its open incidents, report it `offline`
 
 
 def setup_logging(logs_dir: Path, level: int = logging.INFO) -> QueueListener:
@@ -220,6 +222,59 @@ def log_summary(title: str, summary: dict, readers: dict[int, CameraReader]) -> 
              title, summary["busy_pct"], summary["gui_pct"], summary["wall_s"])
 
 
+class PerfCsv:
+    """One row per report window (every --report-every s) in rads_data/logs/perf.csv, for Table 6.
+    missed = processing slots without a processed frame (skipped: the loop was late; stale: no new camera frame;
+    errors). CPU % is of one core (can go above 100 %), RSS is the worker's resident memory."""
+    CAM_COLS = ("in_fps", "proc_fps", "processed", "missed", "skipped", "stale", "detect_mean_ms", "detect_p95_ms",
+                "lag_p95_ms")
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self.cams: list[int] | None = None
+        try:
+            import psutil
+            self._proc = psutil.Process()
+            self._proc.cpu_percent(None)  # start the CPU counter
+        except Exception:  # noqa: BLE001 – psutil missing: memory/CPU columns stay empty
+            self._proc = None
+
+    def write(self, summary: dict, readers, engines, notifier) -> None:
+        try:
+            if self.cams is None:
+                self.cams = sorted(summary["cams"])
+            new = not self.path.exists() or self.path.stat().st_size == 0
+            row = {"time": iso_time(time.time()), "wall_s": summary["wall_s"], "busy_pct": summary["busy_pct"]}
+            for c in self.cams:
+                s = summary["cams"].get(c)
+                r = readers.get(c)
+                if s is None:
+                    continue
+                missed = s["skipped"] + s["stale"] + s["errors"]
+                row.update({f"cam{c}_in_fps": round(r.fps, 2) if r else "",
+                            f"cam{c}_proc_fps": round(s["processed"] / max(summary["wall_s"], 1e-9), 2),
+                            f"cam{c}_processed": s["processed"], f"cam{c}_missed": missed,
+                            f"cam{c}_skipped": s["skipped"], f"cam{c}_stale": s["stale"],
+                            f"cam{c}_detect_mean_ms": s["detect_ms"]["mean"], f"cam{c}_detect_p95_ms": s["detect_ms"].get("p95"),
+                            f"cam{c}_lag_p95_ms": s["lag_ms"].get("p95")})
+            if self._proc is not None:
+                row["rss_mb"] = round(self._proc.memory_info().rss / 2**20, 1)
+                row["cpu_pct"] = round(self._proc.cpu_percent(None), 1)
+            row["open_incidents"] = sum(e.open_incident_count() for e in engines.values())
+            row["queue_db"] = len(notifier.jobs) if notifier is not None else ""
+            row["queue_http"] = len(notifier.posts) if notifier is not None else ""
+            cols = (["time", "wall_s"] + [f"cam{c}_{k}" for c in self.cams for k in self.CAM_COLS]
+                    + ["busy_pct", "rss_mb", "cpu_pct", "open_incidents", "queue_db", "queue_http"])
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+                if new:
+                    w.writeheader()
+                w.writerow(row)
+        except Exception:  # noqa: BLE001 – a CSV problem never stops the worker
+            log.exception("perf.csv: cannot write %s", self.path)
+
+
 def log_rules(engines: dict[int, RuleEngine]) -> None:
     for c, e in engines.items():
         log.info("cam%d rules: %s", c, "; ".join(
@@ -253,7 +308,8 @@ class Scheduler:
                  stop: threading.Event, engines: dict[int, RuleEngine] | None = None,
                  notifier: Notifier | None = None, settings: WorkerSettings | None = None,
                  hub: FrameHub | None = None, reload_event: threading.Event | None = None,
-                 reloader: Reloader | None = None, crossing_check: bool = False) -> None:
+                 reloader: Reloader | None = None, crossing_check: bool = False,
+                 perf_csv: Path | None = None) -> None:
         self.readers = readers
         self.hub = hub
         self.reload_event = reload_event
@@ -285,6 +341,10 @@ class Scheduler:
         self._pub_last = {c: 0.0 for c in readers}         # last hand-off to the web server
         self._proc_times: dict[int, deque] = {c: deque() for c in readers}  # processed frames, last 5 s
         self._health_next = 0.0
+        self._conn = {c: 0 for c in readers}               # reader connection number last seen (0 = none yet)
+        self._down_since: dict[int, float] = {}            # perf_counter time a camera stopped being online
+        self._offline: set[int] = set()                    # down > OFFLINE_CLOSE_S: incidents closed, `offline`
+        self.perf_csv = PerfCsv(perf_csv) if perf_csv is not None else None
 
     def run(self) -> dict:
         cams = list(self.readers)
@@ -312,11 +372,15 @@ class Scheduler:
                 break
             now = time.perf_counter()
             if now >= next_report:
-                log_summary("perf", window.summary(now), self.readers)
+                summ = window.summary(now)
+                log_summary("perf", summ, self.readers)
                 self._log_notifier()
+                if self.perf_csv is not None:
+                    self.perf_csv.write(summ, self.readers, self.engines, self.notifier)
                 window.reset(now)
                 while next_report <= now:
                     next_report += self.report_every
+            self._check_offline(now)
             self._heartbeats(now)
             self._publish_health(now)
             if self.show and (slot - now > GUI_PUMP_MIN_IDLE_S or now - self._last_pump > GUI_PUMP_MAX_GAP_S):
@@ -360,10 +424,40 @@ class Scheduler:
             while dq and now - dq[0] > 5.0:
                 dq.popleft()
             fr = r.latest()
-            cams[c] = {"status": r.status.value, "input_fps": round(r.fps, 1), "processed_fps": round(len(dq) / 5.0, 1),
+            cams[c] = {"status": self.status(c).value, "input_fps": round(r.fps, 1), "processed_fps": round(len(dq) / 5.0, 1),
                        "last_frame": None if fr is None else iso_time(wall - (now - fr.capture_t)),
                        "open_incidents": self.engines[c].open_incident_count() if c in self.engines else 0}
         self.hub.set_health({"crossing_check": self.crossing_check, "cameras": cams})
+
+    def status(self, c: int) -> CameraStatus:
+        """The reader's status, but `offline` once the camera has been down longer than OFFLINE_CLOSE_S."""
+        return CameraStatus.OFFLINE if c in self._offline else self.readers[c].status
+
+    def _check_offline(self, now: float) -> None:
+        """A camera not online for more than OFFLINE_CLOSE_S: close its open incidents (end_time = last violation,
+        message 5) and reset its state, once per outage. Heartbeats then report it `offline`."""
+        for c, r in self.readers.items():
+            if r.status == CameraStatus.ONLINE:
+                if c in self._down_since:
+                    self._down_since.pop(c)
+                    self._offline.discard(c)
+                continue
+            if c not in self._down_since:
+                fr = r.latest()  # down since its last frame, if it ever had one
+                self._down_since[c] = min(now, fr.capture_t) if fr is not None else now
+            down = now - self._down_since[c]
+            if c in self._offline or down <= OFFLINE_CLOSE_S:
+                continue
+            self._offline.add(c)
+            closes = restart_camera(self.pipelines[c], self.engines.get(c), "camera offline")
+            self._submit_closes(closes)
+            log.warning("cam%d: not online for %.0f s (%s) – closed %d open incident(s) (end_time = last violation); "
+                        "reported offline until it is back", c, down, r.status.value, len(closes))
+
+    def _submit_closes(self, closes) -> None:
+        if self.notifier is not None:
+            for ev in closes:
+                self.notifier.submit(CloseJob(ev))
 
     def _heartbeats(self, now: float) -> None:
         """Every HEARTBEAT_INTERVAL_S per camera: status + processed FPS to the notifier (camera_health + msg 6)."""
@@ -381,7 +475,7 @@ class Scheduler:
             fr = r.latest()
             wall = time.time()
             last_seen = None if fr is None else wall - (time.perf_counter() - fr.capture_t)
-            self.notifier.submit(HeartbeatJob(c, r.status, None if fps is None else round(fps, 2), wall, last_seen))
+            self.notifier.submit(HeartbeatJob(c, self.status(c), None if fps is None else round(fps, 2), wall, last_seen))
 
     def _log_notifier(self) -> None:
         if self.notifier is not None:
@@ -401,6 +495,15 @@ class Scheduler:
             else:
                 self.notifier.submit(CloseJob(ev))
 
+    def _check_frame_size(self, c: int, image) -> None:
+        cam = self.settings.cameras.get(c) if self.settings is not None else None
+        h, w = image.shape[:2]
+        if cam is not None and cam.frame_width and cam.frame_height and (w, h) != (cam.frame_width,
+                                                                               cam.frame_height):
+            log.warning("cam%d: the source sends %dx%d but the DB says %dx%d – zones are in DB pixels and will be "
+                        "in the wrong place; fix the camera's picture size or redraw the zones", c, w, h,
+                        cam.frame_width, cam.frame_height)
+
     def _process(self, c: int, window: PerfWindow, total: PerfWindow) -> None:
         fr = self.readers[c].latest()
         if fr is None or fr.seq == self._last_seq[c]:  # no new frame since the last one we processed
@@ -408,12 +511,19 @@ class Scheduler:
             total.stale(c)
             return
         self._last_seq[c] = fr.seq
-        if fr.loop != self._pass[c] and self.readers[c].is_file:
+        if fr.conn != self._conn.get(c, 0):
+            first = self._conn.get(c, 0) == 0
+            self._conn[c], self._pass[c] = fr.conn, fr.loop
+            self._check_frame_size(c, fr.image)
+            if not first:  # reconnected: new track ids and a time gap, so start this camera afresh
+                closes = restart_camera(self.pipelines[c], self.engines.get(c), "camera reconnected")
+                self._submit_closes(closes)
+                log.info("cam%d: reconnected – closed %d open incident(s) (end_time = last violation); tracker, "
+                         "rule state and phone spots reset", c, len(closes))
+        elif fr.loop != self._pass[c] and self.readers[c].is_file:
             self._pass[c] = fr.loop
             closes = restart_camera(self.pipelines[c], self.engines.get(c))
-            if self.notifier is not None:
-                for ev in closes:
-                    self.notifier.submit(CloseJob(ev))
+            self._submit_closes(closes)
             log.info("cam%d: clip looped – pass %d starts; closed %d open incident(s), tracker, rule state and "
                      "phone spots reset", c, fr.loop + 1, len(closes))
         t_start = time.perf_counter()
@@ -526,7 +636,9 @@ class Scheduler:
         closes = restart_camera(self.pipelines[cid], self.engines.get(cid), "camera restarted")
         self.readers[cid].stop()  # no join: the old thread ends on its own
         self.readers[cid] = self.reloader.start_reader(cid, url)
-        self._last_seq[cid], self._pass[cid] = 0, 0
+        self._last_seq[cid], self._pass[cid], self._conn[cid] = 0, 0, 0
+        self._down_since.pop(cid, None)
+        self._offline.discard(cid)
         log.info("cam%d: source changed – reader restarted (%s)", cid, redact(url))
         return closes
 
@@ -536,8 +648,9 @@ class Scheduler:
         self.readers.pop(cid).stop()
         self.pipelines.pop(cid, None)
         for dct in (self._next_t, self._hb_last, self._hb_next, self._last_seq, self._pass, self._pub_last,
-                    self._proc_times, self._hb_frames):
+                    self._proc_times, self._hb_frames, self._conn, self._down_since):
             dct.pop(cid, None)
+        self._offline.discard(cid)
         if self.hub is not None:
             self.hub.set_cameras(self.readers)
         log.info("cam%d: disabled – reader stopped", cid)
@@ -554,6 +667,7 @@ class Scheduler:
         self._next_t[cid] = now
         self._hb_last[cid], self._hb_next[cid] = now, now + HEARTBEAT_INTERVAL_S
         self._last_seq[cid], self._pass[cid], self._pub_last[cid], self._hb_frames[cid] = 0, 0, 0.0, 0
+        self._conn[cid] = 0
         self._proc_times[cid] = deque()
         self._window.add_camera(cid)
         self._total.add_camera(cid)
@@ -650,9 +764,11 @@ def _run(args: argparse.Namespace, settings) -> int:
         return 2
 
     stop = threading.Event()
+    stop_at: list[float] = []
 
     def _on_signal(signum, _frame):
         log.info("signal %s received, stopping", signal.Signals(signum).name)
+        stop_at.append(time.monotonic())
         stop.set()
 
     signal.signal(signal.SIGINT, _on_signal)
@@ -707,7 +823,8 @@ def _run(args: argparse.Namespace, settings) -> int:
         Scheduler(readers, detector, pipelines, interval=args.interval, show=args.show,
                   display_width=args.display_width, report_every=args.report_every, duration=args.duration,
                   stop=stop, engines=engines, notifier=notifier, settings=ws, hub=hub,
-                  reload_event=web.reload_event, reloader=reloader, crossing_check=args.crossing_check).run()
+                  reload_event=web.reload_event, reloader=reloader, crossing_check=args.crossing_check,
+                  perf_csv=settings.logs_dir / "perf.csv").run()
     except Exception:
         log.exception("worker failed")
         return 1
@@ -723,12 +840,15 @@ def _run(args: argparse.Namespace, settings) -> int:
             log.info("stopping: closing %d open incident(s), flushing the notifier", len(closes))
             notifier.stop(timeout=30)
             log.info("notifier: %s", dict(notifier.stats))
+        join_end = time.monotonic() + 7
         for r in readers.values():
-            r.join(timeout=7)
+            r.join(timeout=max(0.0, join_end - time.monotonic()))
+            if r.is_alive():
+                log.warning("cam%d: reader did not stop in time (camera not released)", r.camera_id)
         if args.show:
             cv2.destroyAllWindows()
             cv2.waitKey(1)
-        log.info("worker stopped")
+        log.info("worker stopped%s", f" {time.monotonic() - stop_at[0]:.1f} s after the stop signal" if stop_at else "")
     return 0
 
 
