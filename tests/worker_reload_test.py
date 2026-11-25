@@ -259,3 +259,23 @@ def test_reload_with_unreadable_db_keeps_the_settings(db, caplog):
     sched._reload()
     assert sched.settings is ws and len(engines[2].rules) == 2
     assert any("keeping the current settings" in r.message for r in caplog.records)
+
+
+def test_reload_disabling_a_command_line_camera_makes_its_stream_404(db):
+    ws = load_settings(db)
+    pipelines = {2: CameraPipeline(2, ws.zones_for(2), FPS, zone_object_classes(ws))}
+    hub, reader = FrameHub([2]), FakeReader()
+    sched = Scheduler({2: reader}, FakeDetector(), pipelines, interval=DT, show=False, display_width=960,
+                      report_every=30, duration=0, stop=threading.Event(), engines=build_engines(ws, pipelines, FPS),
+                      settings=ws, hub=hub, reloader=Reloader(load=lambda: load_settings(db), cli_sources=True))
+    client = TestClient(create_app(hub, TOKEN, threading.Event()))
+    assert hub.can_stream(2)
+    with db.begin() as con:
+        con.exec_driver_sql("UPDATE cameras SET enabled = 0 WHERE camera_id = 2")
+    sched._reload()
+    assert client.get("/stream/2").status_code == 404 and client.get("/stream/2?raw=1").status_code == 404
+    assert sched.readers[2] is reader                    # a command-line source keeps running, not restarted
+    with db.begin() as con:
+        con.exec_driver_sql("UPDATE cameras SET enabled = 1 WHERE camera_id = 2")
+    sched._reload()
+    assert hub.can_stream(2)

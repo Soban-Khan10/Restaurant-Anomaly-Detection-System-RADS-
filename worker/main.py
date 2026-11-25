@@ -507,6 +507,8 @@ class Scheduler:
             for ev in closes:
                 self.notifier.submit(CloseJob(ev))
         self.settings = new
+        if self.hub is not None:  # covers command-line cameras too: they keep running, /stream answers 404
+            self.hub.set_disabled(disabled_cameras(new))
         ms = (time.perf_counter() - t_start) * 1e3
         if d.empty() and not errors:
             log.info("reload: nothing changed (%.0f ms)", ms)
@@ -612,6 +614,11 @@ def pick_sources(args: argparse.Namespace, ws: WorkerSettings) -> dict[int, str]
     return {c.camera_id: c.rtsp_url for c in ws.cameras.values() if c.enabled and c.rtsp_url}
 
 
+def disabled_cameras(ws: WorkerSettings) -> set[int]:
+    """Cameras disabled in the DB. A --sourceN camera still runs, but its live view (/stream) answers 404."""
+    return {c.camera_id for c in ws.cameras.values() if not c.enabled}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     settings = get_settings()
@@ -687,7 +694,11 @@ def _run(args: argparse.Namespace, settings) -> int:
         notifier = Notifier(evidence_dir=settings.evidence_dir, api_url=settings.api_url,
                             token=settings.internal_token, model_version=detector.model_version)
         notifier.start()
-        hub = FrameHub(readers)
+        disabled = disabled_cameras(ws)
+        for c in sorted(disabled & set(readers)):
+            log.info("cam%d is disabled in the database: it runs from the command line, but /stream/%d answers 404",
+                     c, c)
+        hub = FrameHub(readers, disabled=disabled)
         web = WebServer(hub, settings.internal_token, crossing_check=args.crossing_check)
         web.start()
         reloader = Reloader(load=load_settings, cli_sources=bool(args.source1 or args.source2), retry_s=args.retry,
