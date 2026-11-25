@@ -37,7 +37,7 @@ describe("role-based menu (roles table)", () => {
 
   it("gives each role exactly its pages", () => {
     expect(labels("Admin")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules", "Reports", "Users"]);
-    expect(labels("Manager")).toEqual(["Overview", "Incidents", "Reports"]);
+    expect(labels("Manager")).toEqual(["Overview", "Incidents", "Detection rules", "Reports"]); // rules read-only
     expect(labels("Technical")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules"]);
     expect(navFor(undefined)).toEqual([]);
   });
@@ -45,6 +45,7 @@ describe("role-based menu (roles table)", () => {
   it("guards pages by the same roles", () => {
     expect(rolesFor("/users")).toEqual(["Admin"]);
     expect(rolesFor("/reports")).toEqual(["Admin", "Manager"]);
+    expect(rolesFor("/cameras")).toEqual(["Admin", "Technical"]);
     expect(rolesFor("/incidents/42")).toEqual(["Admin", "Manager", "Technical"]);
   });
 });

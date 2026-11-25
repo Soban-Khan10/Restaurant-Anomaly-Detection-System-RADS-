@@ -1,4 +1,5 @@
-"""/api/zones CRUD (Admin/Technical). Polygons are [[x, y], ...] in camera pixels.
+"""/api/zones: every logged-in user may read (rule cards name their zones); only Admin and Technical may create,
+change or delete. Polygons are [[x, y], ...] in camera pixels.
 
 Validation: at least 3 points (at most 100), inside the camera's frame size when it is known (else x, y >= 0),
 non-zero area, edges must not cross. Audit rows store old and new values.
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import diff, write_audit
 from app.auth import ROLES_SETTINGS
-from app.deps import CurrentUser, get_db, require_role
+from app.deps import CurrentUser, get_current_user, get_db, require_role
 from app.worker import WorkerClient, get_worker, reload_after_save
 from shared.config import load_defaults
 from shared.contract import ZoneType
@@ -158,7 +159,7 @@ def _audit_values(z: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------- routes
 
 @router.get("", response_model=list[ZoneOut])
-def list_zones(camera_id: int | None = Query(None), _: CurrentUser = Depends(settings_role),
+def list_zones(camera_id: int | None = Query(None), _: CurrentUser = Depends(get_current_user),
                db: Session = Depends(get_db)) -> list[ZoneOut]:
     where, params = ("WHERE camera_id = :c", {"c": camera_id}) if camera_id is not None else ("", {})
     ids = [r[0] for r in db.execute(text(f"SELECT zone_id FROM zones {where} ORDER BY camera_id, zone_id"), params)]
@@ -166,7 +167,7 @@ def list_zones(camera_id: int | None = Query(None), _: CurrentUser = Depends(set
 
 
 @router.get("/{zone_id}", response_model=ZoneOut)
-def get_zone(zone_id: int, _: CurrentUser = Depends(settings_role), db: Session = Depends(get_db)) -> ZoneOut:
+def get_zone(zone_id: int, _: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> ZoneOut:
     return ZoneOut(**_row(db, zone_id))
 
 

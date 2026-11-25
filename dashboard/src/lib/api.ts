@@ -130,6 +130,29 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
   return data as T;
 }
 
+/** Like api(), but also returns the response headers (settings saves report X-RADS-Worker-Reload). */
+export async function apiWithHeaders<T>(path: string, opts: RequestOptions = {}): Promise<{ data: T; headers: Headers }> {
+  const res = await send(path, opts, "application/json");
+  if (res.status === 204) return { data: undefined as T, headers: res.headers };
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, errorMessage(data, res.status));
+  return { data: data as T, headers: res.headers };
+}
+
+/** What happened to the camera system after a settings save (header set by the server on every save). */
+export type WorkerReload = "ok" | "failed" | "unknown";
+
+export function workerReload(headers: Headers): WorkerReload {
+  const v = headers.get("X-RADS-Worker-Reload");
+  return v === "ok" || v === "failed" ? v : "unknown";
+}
+
+export const SAVED_MESSAGE: Record<WorkerReload, string> = {
+  ok: "Saved. The camera system has reloaded and uses the new values now.",
+  failed: "Saved, but the camera system is offline; it will use the new values when it restarts.",
+  unknown: "Saved.",
+};
+
 /** File name from a Content-Disposition header (RFC 6266: filename*=UTF-8''... wins over filename=). */
 export function fileNameFrom(header: string | null): string | null {
   if (!header) return null;

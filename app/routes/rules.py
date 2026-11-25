@@ -1,4 +1,5 @@
-"""/api/rules CRUD (Admin/Technical). One rule per hazard per camera.
+"""/api/rules: every logged-in user may read (the dashboard shows Managers a read-only page); only Admin and
+Technical may create, change or delete. One rule per hazard per camera.
 
 Validation: conf_threshold 0.05–0.95, window 1–30 s, min_ratio 0.1–1, end_gap 1–120 s, cooldown 0–600 s,
 severity Low/Medium/High; at least one zone, all on the rule's camera, of the type the hazard needs
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import diff, write_audit
 from app.auth import ROLES_SETTINGS
-from app.deps import CurrentUser, get_db, require_role
+from app.deps import CurrentUser, get_current_user, get_db, require_role
 from app.routes.zones import required_zone_type
 from app.worker import WorkerClient, get_worker, reload_after_save
 from shared.contract import HazardId, Severity, ZoneType
@@ -124,7 +125,7 @@ def _audit_values(r: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("", response_model=list[RuleOut])
 def list_rules(camera_id: int | None = Query(None), hazard_id: HazardId | None = Query(None),
-               _: CurrentUser = Depends(settings_role), db: Session = Depends(get_db)) -> list[RuleOut]:
+               _: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> list[RuleOut]:
     where, params = [], {}
     if camera_id is not None:
         where.append("camera_id = :c")
@@ -138,7 +139,7 @@ def list_rules(camera_id: int | None = Query(None), hazard_id: HazardId | None =
 
 
 @router.get("/{rule_id}", response_model=RuleOut)
-def get_rule(rule_id: int, _: CurrentUser = Depends(settings_role), db: Session = Depends(get_db)) -> RuleOut:
+def get_rule(rule_id: int, _: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> RuleOut:
     return RuleOut(**_row(db, rule_id))
 
 

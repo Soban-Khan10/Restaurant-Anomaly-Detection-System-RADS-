@@ -28,11 +28,18 @@ def test_list_filters_and_get(ctx):
     assert ctx.client.get("/api/rules?hazard_id=H-99", headers=h).status_code == 422
 
 
-def test_manager_cannot_read_or_change_rules(ctx):
+def test_manager_can_read_but_not_change_rules(ctx):
+    """Managers see the Detection rules page read-only (Phase 6c)."""
     h = ctx.headers("manager")
     rid = ctx.rule("H-01")["rule_id"]
-    assert ctx.client.get("/api/rules", headers=h).status_code == 403
+    r = ctx.client.get("/api/rules", headers=h)
+    assert r.status_code == 200 and rid in [x["rule_id"] for x in r.json()]
+    assert ctx.client.get(f"/api/rules/{rid}", headers=h).json()["hazard_id"] == "H-01"
     assert ctx.client.patch(f"/api/rules/{rid}", json={"window_s": 6}, headers=h).status_code == 403
+    body = {"hazard_id": "H-05", "camera_id": 2, "zone_ids": [1]}
+    assert ctx.client.post("/api/rules", json=body, headers=h).status_code == 403
+    assert ctx.client.delete(f"/api/rules/{rid}", headers=h).status_code == 403
+    assert ctx.client.get("/api/rules").status_code == 401  # still login only
     assert ctx.worker.calls == []
 
 

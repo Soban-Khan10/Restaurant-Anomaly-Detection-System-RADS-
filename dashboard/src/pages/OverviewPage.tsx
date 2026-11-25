@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useAuth } from "../auth/AuthContext";
 import { CameraIcon } from "../components/Icons";
+import { LiveStream } from "../components/LiveStream";
 import { Card, CameraStatusBadge, EmptyState, ErrorState, SeverityBadge, Spinner, StatusBadge } from "../components/ui";
-import { cameraStreamUrl } from "../lib/api";
 import { formatTime, timeAgo } from "../lib/format";
 import type { Alert, Camera, IncidentSummary } from "../lib/types";
 import { useApi } from "../lib/useApi";
@@ -55,30 +54,23 @@ function TodayStats({ summary }: { summary: IncidentSummary | null }) {
 // ---------------------------------------------------------------- cameras
 
 function CameraTile({ camera }: { camera: Camera }) {
-  const { token } = useAuth();
   const { cameras: live } = useLive();
   const [showLive, setShowLive] = useState(false);
-  const [streamFailed, setStreamFailed] = useState(false);
   const beat = live[camera.camera_id];
   const status = beat?.status ?? camera.status;
   const fps = beat ? beat.fps : camera.fps;
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="relative aspect-video bg-slate-900">
-        {showLive && token && !streamFailed ? (
-          <img src={cameraStreamUrl(camera.camera_id, token)} alt={`Live view of ${camera.name}`}
-            className="h-full w-full object-contain" onError={() => setStreamFailed(true)} />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-slate-400">
-            <CameraIcon className="h-8 w-8" />
-            <p className="text-xs">
-              {streamFailed ? "Live view is not available right now (the camera service is not running)."
-                : "Live view is hidden"}
-            </p>
-          </div>
-        )}
-      </div>
+      {showLive ? (
+        <LiveStream cameraId={camera.camera_id} name={camera.name} />
+      ) : (
+        <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-slate-900 px-4 text-center
+          text-slate-400">
+          <CameraIcon className="h-8 w-8" />
+          <p className="text-xs">Live view is hidden</p>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-900">{camera.name}</p>
@@ -93,7 +85,7 @@ function CameraTile({ camera }: { camera: Camera }) {
         <div className="flex shrink-0 items-center gap-2">
           <CameraStatusBadge status={camera.enabled ? status : "offline"} />
           <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs"
-            onClick={() => { setStreamFailed(false); setShowLive((v) => !v); }}>
+            onClick={() => setShowLive((v) => !v)}>
             {showLive ? "Hide" : "Live view"}
           </button>
         </div>

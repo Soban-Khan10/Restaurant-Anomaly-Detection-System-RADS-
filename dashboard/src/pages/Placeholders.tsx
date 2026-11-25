@@ -1,5 +1,4 @@
-// Screens that come in the next dashboard step (cameras & areas, detection rules), plus "no access" and
-// "not found".
+// "No access" and "not found" pages.
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card } from "../components/ui";
@@ -12,14 +11,6 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
         <div className="mx-auto mt-2 max-w-md text-sm text-slate-500">{children}</div>
       </div>
     </Card>
-  );
-}
-
-export function ComingSoon({ title }: { title: string }) {
-  return (
-    <Panel title={title}>
-      This screen will be added in the next step of the dashboard.
-    </Panel>
   );
 }
 

@@ -32,9 +32,13 @@ def test_list_get_and_roles(ctx):
     assert ctx.client.get(f"/api/zones/{prep1['zone_id']}", headers=h).json() == prep1
     assert ctx.client.get("/api/zones/999", headers=h).status_code == 404
 
-    m = ctx.headers("manager")
-    assert ctx.client.get("/api/zones", headers=m).status_code == 403
+    m = ctx.headers("manager")  # Managers may read (rule cards name their zones) but not change
+    assert ctx.client.get("/api/zones?camera_id=1", headers=m).json() == cam1
+    assert ctx.client.get(f"/api/zones/{prep1['zone_id']}", headers=m).status_code == 200
     assert create(ctx, "manager").status_code == 403
+    assert ctx.client.patch(f"/api/zones/{prep1['zone_id']}", json={"name": "x"}, headers=m).status_code == 403
+    assert ctx.client.delete(f"/api/zones/{prep1['zone_id']}", headers=m).status_code == 403
+    assert ctx.client.get("/api/zones").status_code == 401
 
 
 # ---------------------------------------------------------------- create + validation

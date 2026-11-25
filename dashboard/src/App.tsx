@@ -9,7 +9,10 @@ import IncidentDetailPage from "./pages/IncidentDetailPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import LoginPage from "./pages/LoginPage";
 import OverviewPage from "./pages/OverviewPage";
-import { ComingSoon, NoAccess, NotFound } from "./pages/Placeholders";
+import CameraAreasPage from "./pages/CameraAreasPage";
+import CamerasPage from "./pages/CamerasPage";
+import { NoAccess, NotFound } from "./pages/Placeholders";
+import RulesPage from "./pages/RulesPage";
 import ReportsPage from "./pages/ReportsPage";
 import UsersPage from "./pages/UsersPage";
 
@@ -37,8 +40,9 @@ export default function App() {
         <Route index element={<OverviewPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
         <Route path="incidents/:id" element={<IncidentDetailPage />} />
-        <Route path="cameras" element={<RoleGate path="/cameras"><ComingSoon title="Cameras & areas" /></RoleGate>} />
-        <Route path="rules" element={<RoleGate path="/rules"><ComingSoon title="Detection rules" /></RoleGate>} />
+        <Route path="cameras" element={<RoleGate path="/cameras"><CamerasPage /></RoleGate>} />
+        <Route path="cameras/:id" element={<RoleGate path="/cameras"><CameraAreasPage /></RoleGate>} />
+        <Route path="rules" element={<RulesPage />} />
         <Route path="reports" element={<RoleGate path="/reports"><ReportsPage /></RoleGate>} />
         <Route path="users" element={<RoleGate path="/users"><UsersPage /></RoleGate>} />
         <Route path="*" element={<NotFound />} />

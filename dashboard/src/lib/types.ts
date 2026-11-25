@@ -188,3 +188,32 @@ export interface Report {
   download_url: string;
   available: boolean;
 }
+
+// Cameras & areas, detection rules (/api/cameras, /api/zones, /api/rules)
+export type ZoneType = "prep" | "waste" | "ignore";
+export type Point = [number, number];
+
+export interface Zone {
+  zone_id: number;
+  camera_id: number;
+  name: string;
+  type: ZoneType;
+  polygon: Point[];
+  active: boolean;
+  rule_ids: number[];
+}
+
+export interface Rule {
+  rule_id: number;
+  hazard_id: string;
+  hazard_name: string;
+  camera_id: number;
+  enabled: boolean;
+  conf_threshold: number;
+  window_s: number;
+  min_ratio: number;
+  end_gap_s: number;
+  cooldown_s: number;
+  severity: Severity;
+  zone_ids: number[];
+}
