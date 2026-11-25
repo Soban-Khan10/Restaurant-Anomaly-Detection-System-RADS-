@@ -132,8 +132,8 @@ def test_relay_through_the_fake_worker(ctx):
 
     snap = ctx.client.get("/api/cameras/1/snapshot", headers=h)
     assert snap.status_code == 200
-    with Image.open(io.BytesIO(snap.content)) as img:
-        assert img.format == "JPEG" and img.size == (960, 540)
+    with Image.open(io.BytesIO(snap.content)) as img:  # the clean (?raw=1) frame: 1344 wide, camera 1920x1080 here
+        assert img.format == "JPEG" and img.size == (1344, 756)
 
     assert ctx.client.get("/api/cameras/2/stream", headers=h).status_code == 503  # offline camera
 
@@ -178,3 +178,67 @@ def test_render_frame_draws_zones_at_camera_scale():
         assert img.size == (960, 540)
         r, g, b = img.getpixel((480, 465))  # bottom edge of the zone: y 620 * 0.75
         assert g > 150 and g > r and g > b  # drawn in the prep colour (green)
+
+
+# ---------------------------------------------------------------- clean snapshot (?raw=1) for the area editor
+
+def _recording(handler):
+    seen: list[tuple[str, dict]] = []
+
+    def record(req):
+        seen.append((req.url.path, dict(req.url.params)))
+        return handler(req)
+    return seen, record
+
+
+def test_snapshot_asks_for_the_clean_stream_but_live_view_does_not(ctx):
+    seen, ctx.worker.handler = _recording(mjpeg)
+    h = ctx.headers("tech")
+    assert ctx.client.get("/api/cameras/1/snapshot", headers=h).content == JPEG_A
+    assert ctx.client.get("/api/cameras/1/stream", headers=h).status_code == 200
+    assert seen == [("/stream/1", {"raw": "1"}), ("/stream/1", {})]  # live view keeps the drawings
+
+
+def test_snapshot_works_with_an_older_worker_that_ignores_raw(ctx):
+    seen, ctx.worker.handler = _recording(mjpeg)  # mjpeg() answers the same stream whatever the query
+    r = ctx.client.get("/api/cameras/1/snapshot", headers=ctx.headers("admin"))
+    assert r.status_code == 200 and r.content == JPEG_A and len(seen) == 1
+
+
+def test_snapshot_asks_again_without_raw_if_the_worker_refuses_it(ctx):
+    def strict(req):
+        return httpx.Response(422) if "raw" in req.url.params else mjpeg(req)
+    seen, ctx.worker.handler = _recording(strict)
+    r = ctx.client.get("/api/cameras/1/snapshot", headers=ctx.headers("admin"))
+    assert r.status_code == 200 and r.content == JPEG_A
+    assert seen == [("/stream/1", {"raw": "1"}), ("/stream/1", {})]
+
+
+def test_snapshot_does_not_retry_when_the_camera_is_unknown_or_the_worker_is_down(ctx):
+    seen, ctx.worker.handler = _recording(mjpeg)  # 404 for camera 2
+    assert ctx.client.get("/api/cameras/2/snapshot", headers=ctx.headers("admin")).status_code == 404
+    assert len(seen) == 1
+    ctx.worker.down = True
+    assert ctx.client.get("/api/cameras/1/snapshot", headers=ctx.headers("admin")).status_code == 503
+
+
+def test_fake_worker_raw_frame_is_the_picture_only_at_the_real_workers_size():
+    cam = {"name": "Camera 1", "frame_width": 2688, "frame_height": 1520}
+    zones = [{"name": "Prep", "type": "prep", "active": 1, "polygon": "[[200,200],[2400,200],[2400,1300],[200,1300]]"}]
+    with Image.open(io.BytesIO(render_frame(cam, zones, 5))) as drawn:
+        r, g, b = drawn.getpixel((480, 464))  # bottom edge of the zone at 960 px: y 1300 * 960/2688
+        assert g > 150 and g > r and g > b
+    with Image.open(io.BytesIO(render_frame(cam, zones, 5, raw=True))) as raw:
+        assert raw.size == (1344, 760)
+        r, g, b = raw.getpixel((672, 650))  # same place at 1344 px: no green outline
+        assert not (g > 150 and g > r and g > b)
+
+
+def test_snapshot_through_the_fake_worker_is_clean(ctx):
+    fake = create_worker_app(ctx.Session, INTERNAL[INTERNAL_HEADER], max_frames=1, fps=100)
+    app.dependency_overrides[get_worker] = lambda: WorkerClient(
+        "http://127.0.0.1:8001", INTERNAL[INTERNAL_HEADER], transport=httpx.ASGITransport(app=fake))
+    ctx.execute("UPDATE cameras SET frame_width = 2688, frame_height = 1520")
+    snap = ctx.client.get("/api/cameras/1/snapshot", headers=ctx.headers("tech"))
+    with Image.open(io.BytesIO(snap.content)) as img:
+        assert img.size == (1344, 760)  # raw size; the editor still saves in 2688 x 1520 camera pixels

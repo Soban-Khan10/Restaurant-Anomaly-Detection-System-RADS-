@@ -2,6 +2,8 @@
 
   POST {WORKER}/reload            -> {"ok": true}; after every camera/zone/rule save. Worker down = warning only.
   GET  {WORKER}/stream/{camera}   -> MJPEG (multipart/x-mixed-replace); relayed to logged-in users.
+       ...?raw=1                    -> the same stream with no boxes, zones or labels (1344x760); used for the
+                                       snapshot the area editor draws on. Older workers ignore it.
 Both carry X-RADS-Internal: <RADS_INTERNAL_TOKEN>.
 """
 from __future__ import annotations
@@ -54,12 +56,13 @@ class WorkerClient:
         return False
 
     # ---------------------------------------------------------------- message 8
-    async def open_stream(self, camera_id: int) -> tuple[httpx.AsyncClient, httpx.Response]:
-        """Open the worker's MJPEG stream. Caller must close both (see close_stream)."""
+    async def open_stream(self, camera_id: int, raw: bool = False) -> tuple[httpx.AsyncClient, httpx.Response]:
+        """Open the worker's MJPEG stream (raw: without drawings). Caller must close both (see close_stream)."""
         client = httpx.AsyncClient(base_url=self.base_url, transport=self.transport,
                                    timeout=httpx.Timeout(STREAM_CONNECT_TIMEOUT_S, read=None))
         try:
-            req = client.build_request("GET", PATH_WORKER_STREAM.format(camera_id=camera_id), headers=self.headers)
+            req = client.build_request("GET", PATH_WORKER_STREAM.format(camera_id=camera_id), headers=self.headers,
+                                       params={"raw": "1"} if raw else None)
             resp = await client.send(req, stream=True)
         except httpx.HTTPError as e:
             await client.aclose()
@@ -76,8 +79,17 @@ class WorkerClient:
         await client.aclose()
 
     async def snapshot(self, camera_id: int) -> bytes:
-        """First complete JPEG frame from the worker's MJPEG stream."""
-        client, resp = await self.open_stream(camera_id)
+        """First complete JPEG of the clean stream (?raw=1: no boxes, zones or labels), for drawing areas on.
+
+        Its size (1344x760 from the current worker) does not matter: the editor converts clicks to camera pixels
+        with cameras.frame_width/frame_height. A worker that ignores raw sends the annotated frame, which still
+        works; one that refuses the parameter (400/422) is asked again without it."""
+        try:
+            client, resp = await self.open_stream(camera_id, raw=True)
+        except WorkerUnavailable as e:
+            if e.status_code not in (400, 422):
+                raise
+            client, resp = await self.open_stream(camera_id)
         try:
             return await asyncio.wait_for(first_jpeg(resp), SNAPSHOT_TIMEOUT_S)
         except asyncio.TimeoutError:

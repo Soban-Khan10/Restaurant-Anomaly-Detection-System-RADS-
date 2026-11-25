@@ -10,7 +10,8 @@ Rows are tagged model_version='fake_incidents'; remove them with --purge.
 
 It also stands in for the worker's own HTTP server (contract messages 7 and 8) on RADS_WORKER_URL (port 8001):
   * POST /reload           -> {"ok": true}   (rules and zones are re-read anyway before every fake incident)
-  * GET  /stream/{camera}  -> MJPEG at ~2 FPS: a test pattern (or --video FILE) with the camera's zones drawn,
+  * GET  /stream/{camera}  -> MJPEG at ~2 FPS: a test pattern (or --video FILE) with the camera's zones drawn
+                              (?raw=1: the picture only, no zones or text, like the real worker),
                               re-read from the DB every frame, so zone edits show up at once
 Both require X-RADS-Internal, like the real worker.
 
@@ -41,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python sc
 
 import httpx  # noqa: E402
 import uvicorn  # noqa: E402
-from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -311,6 +312,7 @@ def purge(Session_: sessionmaker[Session], evidence_dir: Path) -> int:
 
 ZONE_COLOURS = {"prep": (46, 204, 113), "waste": (243, 156, 18), "ignore": (149, 165, 166)}
 STREAM_WIDTH = 960  # frames are drawn in camera pixels, then scaled down to this width
+RAW_STREAM_WIDTH = 1344  # ?raw=1, like the real worker (a 2688x1520 camera gives 1344x760)
 
 
 def _font(size: int):
@@ -346,8 +348,9 @@ class VideoSource:
 
 
 def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
-                 video: VideoSource | None = None) -> bytes:
-    """One JPEG: test pattern (or video frame) at the camera's size, zones drawn, scaled to STREAM_WIDTH."""
+                 video: VideoSource | None = None, raw: bool = False) -> bytes:
+    """One JPEG: test pattern (or video frame) at the camera's size, zones drawn, scaled to STREAM_WIDTH.
+    raw: the picture only – no zones and no text, like the real worker's ?raw=1 (the area editor's snapshot)."""
     w, h = camera["frame_width"] or 1920, camera["frame_height"] or 1080
     if video is not None:
         img = video.frame().resize((w, h))
@@ -360,6 +363,8 @@ def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
             d.rectangle((i * bw, 0, (i + 1) * bw, h // 8), fill=c)
         x = (n * w // 40) % w  # moving line: proves the picture is live
         d.rectangle((x, h // 8, x + w // 100, h), fill=(80, 90, 110))
+    if raw:
+        return _jpeg(img.resize((RAW_STREAM_WIDTH, round(h * RAW_STREAM_WIDTH / w))))
     d = ImageDraw.Draw(img)
     big, small = _font(max(h // 22, 12)), _font(max(h // 36, 10))
     for z in zones:
@@ -372,7 +377,10 @@ def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
     d.text((w // 40, h // 8 + h // 40), f"{camera['name']}  |  {stamp}  |  frame {n}", fill=(255, 255, 255), font=big)
     label = "FAKE WORKER - test pattern (scripts/fake_incidents.py)" if video is None else "FAKE WORKER - video file"
     d.text((w // 40, h - h // 12), label, fill=(200, 200, 200), font=small)
-    img = img.resize((STREAM_WIDTH, round(h * STREAM_WIDTH / w)))
+    return _jpeg(img.resize((STREAM_WIDTH, round(h * STREAM_WIDTH / w))))
+
+
+def _jpeg(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=70)
     return buf.getvalue()
@@ -397,7 +405,8 @@ def create_worker_app(Session_: sessionmaker[Session], token: str, offline_camer
         return ReloadResponse(ok=True)
 
     @api.get(PATH_WORKER_STREAM)
-    def stream(camera_id: int, x_rads_internal: str | None = Header(None, alias=INTERNAL_HEADER)):
+    def stream(camera_id: int, raw: bool = Query(False, description="no zones or labels (area editor snapshot)"),
+               x_rads_internal: str | None = Header(None, alias=INTERNAL_HEADER)):
         check(x_rads_internal)
         if camera_id == offline_camera:
             raise HTTPException(503, f"camera {camera_id} is offline")
@@ -414,7 +423,7 @@ def create_worker_app(Session_: sessionmaker[Session], token: str, offline_camer
                 with Session_() as s:  # zones re-read every frame: edits show up at once
                     zones = [dict(z) for z in s.execute(
                         text("SELECT * FROM zones WHERE camera_id = :c ORDER BY zone_id"), {"c": camera_id}).mappings()]
-                jpeg = await asyncio.to_thread(render_frame, cam, zones, n, video)
+                jpeg = await asyncio.to_thread(render_frame, cam, zones, n, video, raw)
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode()
                        + b"\r\n\r\n" + jpeg + b"\r\n")
                 n += 1

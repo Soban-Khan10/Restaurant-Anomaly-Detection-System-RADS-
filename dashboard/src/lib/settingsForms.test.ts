@@ -13,6 +13,15 @@ describe("zone editor: displayed size -> camera pixels", () => {
     expect(toCameraPixels(100 + 896, 50 + 506.67, shown, 2688, 1520)).toEqual([2688, 1520]);
   });
 
+  it("scales with the camera's size (2688 × 1520), not the snapshot's own size (1344 × 760)", () => {
+    // The clean snapshot (?raw=1) is 1344 × 760. Shown at that size, a click on its pixel (672, 380) ...
+    const snapshot = { left: 0, top: 0, width: 1344, height: 760 };
+    expect(toCameraPixels(672, 380, snapshot, 2688, 1520)).toEqual([1344, 760]); // ... is saved as (1344, 760)
+    // Shown smaller in the editor, the same spot of the picture still gives the same camera pixel.
+    const editor = { left: 250, top: 120, width: 729, height: 412.2 };
+    expect(toCameraPixels(250 + 729 / 2, 120 + 412.2 / 2, editor, 2688, 1520)).toEqual([1344, 760]);
+  });
+
   it("keeps points inside the picture when the pointer is dragged outside it", () => {
     expect(toCameraPixels(0, 0, shown, 2688, 1520)).toEqual([0, 0]);
     expect(toCameraPixels(5000, 5000, shown, 2688, 1520)).toEqual([2688, 1520]);
