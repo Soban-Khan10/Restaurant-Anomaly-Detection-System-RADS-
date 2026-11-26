@@ -258,12 +258,27 @@ class RuleEngine:
         for (hz, _key), st in self._states.items():
             if st.incident is not None:
                 self._close(st, hz, st.incident.last_violation_t, st.incident.last_violation_t, reason, events)
+        self._clear()
+        return events  # type: ignore[return-value]
+
+    def pause(self, pause_start_t: float, reason: str = "detection paused") -> list[IncidentClose]:
+        """Detection paused: close every open incident with end_time = the pause start (never before the incident's
+        own start, if the pause was noticed a few seconds late), then forget all state."""
+        events: list[Event] = []
+        for (hz, _key), st in self._states.items():
+            if st.incident is not None:
+                end = max(pause_start_t, st.incident.start_t)
+                self._close(st, hz, end, end, reason, events)
+        self._clear()
+        return events  # type: ignore[return-value]
+
+    def _clear(self) -> None:
+        """Forget windows, cooldowns, workers, aliases and phone spots."""
         self._states.clear()
         self._alias.clear()
         self._workers.clear()
         self._spots.clear()
         self._overlaps.clear()
-        return events  # type: ignore[return-value]
 
     def reload(self, rules: Iterable[Rule], hazards: dict[str, Hazard], changed_rule_ids: Iterable[int],
                close_rule_ids: Iterable[int], changed_zone_ids: Iterable[int], t: float) -> list[IncidentClose]:

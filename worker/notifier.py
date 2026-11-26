@@ -32,7 +32,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from shared.contract import (INTERNAL_HEADER, NOTIFY_RETRIES, PATH_HEARTBEAT, PATH_INCIDENT_CLOSED,
-                             PATH_INCIDENT_NEW, TZ, CameraStatus, EvidenceKind, Heartbeat, IncidentClosed,
+                             PATH_INCIDENT_NEW, TZ, CameraStatus, DetectionState, EvidenceKind, Heartbeat,
+                             IncidentClosed, PauseReason,
                              IncidentNew, IncidentStatus)
 from worker.draw import draw_evidence
 from worker.linking import Worker
@@ -73,6 +74,8 @@ class HeartbeatJob:
     fps: float | None
     t: float                     # epoch seconds of the heartbeat
     last_seen_t: float | None    # epoch seconds of the camera's newest frame (None: never seen)
+    detection: DetectionState = DetectionState.ACTIVE   # pause monitoring
+    pause_reason: PauseReason | None = None
 
 
 @dataclass
@@ -333,7 +336,8 @@ class Notifier:
                 log.warning("camera %d is not in the cameras table: no camera_health row", job.camera_id)
         self.stats["heartbeats"] += 1
         msg = Heartbeat(camera_id=job.camera_id, status=job.status,
-                        fps=None if job.fps is None else round(job.fps, 2), ts=iso_time(job.t))
+                        fps=None if job.fps is None else round(job.fps, 2), ts=iso_time(job.t),
+                        detection=job.detection, pause_reason=job.pause_reason)
         self.posts.put(_Post(PATH_HEARTBEAT, msg.model_dump(mode="json"), f"heartbeat cam{job.camera_id}", True),
                        droppable=True, coalesce_key=("hb", job.camera_id))
 
