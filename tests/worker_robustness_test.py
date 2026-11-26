@@ -295,3 +295,20 @@ def test_zone_reload_says_on_or_off():
     off = WorkerSettings({}, {4: Zone(4, 2, "Outside", ZoneType.IGNORE, z.polygon, False)}, {}, {})
     assert diff(on, off).changed_zones[4] == "zone 4 'Outside' cam2: active: 1->0 (OFF)"
     assert diff(off, on).changed_zones[4] == "zone 4 'Outside' cam2: active: 0->1 (ON)"
+
+
+def test_perf_csv_with_other_columns_is_kept_aside(tmp_path):
+    path = tmp_path / "perf.csv"
+    path.write_text("time,old_column\n2026-11-25T10:00:00+05:00,1\n")
+    summary = {"wall_s": 30.0, "busy_pct": 10.0, "gui_pct": 0.0, "cams": {1: {
+        "processed": 150, "skipped": 0, "stale": 0, "errors": 0, "detect_ms": {"mean": 30.0, "p95": 35.0},
+        "lag_ms": {"p50": 50.0, "p95": 60.0}}}}
+
+    class R:
+        fps = 25.0
+
+    PerfCsv(path).write(summary, {1: R()}, {}, None)
+    kept = [f for f in tmp_path.iterdir() if f.name.startswith("perf.") and f.name != "perf.csv"]
+    assert len(kept) == 1 and "old_column" in kept[0].read_text()
+    rows = list(csv.DictReader(path.open()))
+    assert len(rows) == 1 and rows[0]["cam1_processed"] == "150"

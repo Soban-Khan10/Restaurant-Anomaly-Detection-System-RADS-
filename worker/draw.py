@@ -83,6 +83,25 @@ def draw_overlay(img: np.ndarray, lines: list[str], origin: tuple[int, int] = (8
     return img
 
 
+BANNER_BG = (0, 110, 230)  # orange (BGR)
+
+
+def draw_banner(img: np.ndarray, text: str) -> np.ndarray:
+    """A full-width bar across the top with `text` (ASCII), in place. Used for "DETECTION PAUSED - ...".
+    The text shrinks to fit the width."""
+    font, th = cv2.FONT_HERSHEY_SIMPLEX, 2
+    h, w = img.shape[:2]
+    fs = 0.9 * w / 1344
+    (tw, tht), _ = cv2.getTextSize(text, font, fs, th)
+    if tw > w - 24:
+        fs *= (w - 24) / tw
+        (tw, tht), _ = cv2.getTextSize(text, font, fs, th)
+    bar = tht + 24
+    img[:bar] = (img[:bar] * 0.25 + np.array(BANNER_BG) * 0.75).astype(img.dtype)
+    cv2.putText(img, text, ((w - tw) // 2, (bar + tht) // 2), font, fs, WHITE, th, cv2.LINE_AA)
+    return img
+
+
 # --------------------------------------------------------------------------- Phase 2: zones, tracks, linked parts
 
 GREY = (160, 160, 160)

@@ -38,7 +38,8 @@ def test_good_calls_are_recorded(client, capsys):
     assert client.post(PATH_HEARTBEAT, json=HB, headers=h).status_code == 200
     calls = client.get("/debug/calls").json()
     assert [c["path"] for c in calls] == [PATH_INCIDENT_NEW, PATH_INCIDENT_CLOSED, PATH_HEARTBEAT]
-    assert calls[0]["body"] == {"incident_id": 1042} and calls[2]["body"] == HB
+    assert calls[0]["body"] == {"incident_id": 1042}
+    assert calls[2]["body"] == {**HB, "detection": "active", "pause_reason": None}  # contract defaults (pauses)
     assert "POST /internal/incidents/new" in capsys.readouterr().out
 
 

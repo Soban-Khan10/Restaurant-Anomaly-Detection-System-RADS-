@@ -40,11 +40,14 @@ from typing import Any, Callable
 import cv2
 
 from shared.config import get_settings
-from shared.contract import HEARTBEAT_INTERVAL_S, CameraStatus, TiedTo, ZoneType
+from shared.db import get_engine
+from shared.contract import HEARTBEAT_INTERVAL_S, CameraStatus, DetectionState, TiedTo, ZoneType
 from worker.detector import Detector
 from worker.draw import annotate as draw_annotate
+from worker.draw import draw_banner, resize_for_display
 from worker.linking import Worker, link_parts
 from worker.notifier import CloseJob, HeartbeatJob, Notifier, OpenJob, iso_time
+from worker.pauses import Pause, PauseWatcher
 from worker.perf import PerfWindow, advance_slot
 from worker.reader import CameraReader, redact
 from worker.reload import diff, validate, zone_camera
@@ -208,11 +211,12 @@ def _fmt(st: dict, keys: tuple[str, ...]) -> str:
 def log_summary(title: str, summary: dict, readers: dict[int, CameraReader]) -> None:
     for c, s in summary["cams"].items():
         r = readers[c]
-        log.info("%s cam%d status=%s in_fps=%.1f processed=%d skipped=%d stale=%d errors=%d | "
+        log.info("%s cam%d status=%s in_fps=%.1f processed=%d skipped=%d stale=%d errors=%d paused=%d | "
                  "detect_ms %s | post_ms %s | total_ms %s | lag_ms %s | tracks max_active=%d new_ids=%d | "
                  "worker_frames=%d in_prep=%s%% ignored_persons=%d dropped_parts=%d removed_objects=%d | "
                  "reader dropped=%d",
                  title, c, r.status.value, r.fps, s["processed"], s["skipped"], s["stale"], s["errors"],
+                 s.get("paused", 0),
                  _fmt(s["detect_ms"], ("mean", "p95")), _fmt(s["post_ms"], ("mean", "p95")),
                  _fmt(s["total_ms"], ("mean", "p95")), _fmt(s["lag_ms"], ("p50", "p95", "max")),
                  s["tracks_max_active"], s["new_track_ids"], s["worker_frames"],
@@ -225,13 +229,16 @@ def log_summary(title: str, summary: dict, readers: dict[int, CameraReader]) -> 
 class PerfCsv:
     """One row per report window (every --report-every s) in rads_data/logs/perf.csv, for Table 6.
     missed = processing slots without a processed frame (skipped: the loop was late; stale: no new camera frame;
-    errors). CPU % is of one core (can go above 100 %), RSS is the worker's resident memory."""
-    CAM_COLS = ("in_fps", "proc_fps", "processed", "missed", "skipped", "stale", "detect_mean_ms", "detect_p95_ms",
-                "lag_p95_ms")
+    errors). camN_paused = slots without detection because monitoring was paused (not missed; they free GPU time).
+    detection_paused = the cameras paused when the row was written (e.g. "2", "1 2", empty = none).
+    CPU % is of one core (can go above 100 %), RSS is the worker's resident memory."""
+    CAM_COLS = ("in_fps", "proc_fps", "processed", "missed", "skipped", "stale", "paused", "detect_mean_ms",
+                "detect_p95_ms", "lag_p95_ms")
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.cams: list[int] | None = None
+        self._checked = False           # header of an existing file compared once
         try:
             import psutil
             self._proc = psutil.Process()
@@ -239,7 +246,7 @@ class PerfCsv:
         except Exception:  # noqa: BLE001 – psutil missing: memory/CPU columns stay empty
             self._proc = None
 
-    def write(self, summary: dict, readers, engines, notifier) -> None:
+    def write(self, summary: dict, readers, engines, notifier, paused=()) -> None:
         try:
             if self.cams is None:
                 self.cams = sorted(summary["cams"])
@@ -255,17 +262,30 @@ class PerfCsv:
                             f"cam{c}_proc_fps": round(s["processed"] / max(summary["wall_s"], 1e-9), 2),
                             f"cam{c}_processed": s["processed"], f"cam{c}_missed": missed,
                             f"cam{c}_skipped": s["skipped"], f"cam{c}_stale": s["stale"],
+                            f"cam{c}_paused": s.get("paused", 0),
                             f"cam{c}_detect_mean_ms": s["detect_ms"]["mean"], f"cam{c}_detect_p95_ms": s["detect_ms"].get("p95"),
                             f"cam{c}_lag_p95_ms": s["lag_ms"].get("p95")})
             if self._proc is not None:
                 row["rss_mb"] = round(self._proc.memory_info().rss / 2**20, 1)
                 row["cpu_pct"] = round(self._proc.cpu_percent(None), 1)
             row["open_incidents"] = sum(e.open_incident_count() for e in engines.values())
+            row["detection_paused"] = " ".join(str(c) for c in sorted(paused))
             row["queue_db"] = len(notifier.jobs) if notifier is not None else ""
             row["queue_http"] = len(notifier.posts) if notifier is not None else ""
             cols = (["time", "wall_s"] + [f"cam{c}_{k}" for c in self.cams for k in self.CAM_COLS]
-                    + ["busy_pct", "rss_mb", "cpu_pct", "open_incidents", "queue_db", "queue_http"])
+                    + ["busy_pct", "detection_paused", "rss_mb", "cpu_pct", "open_incidents", "queue_db",
+                       "queue_http"])
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            if not new and not self._checked:
+                self._checked = True
+                with self.path.open(newline="") as f:
+                    header = next(csv.reader(f), [])
+                if header != cols:  # columns changed (other cameras, newer worker): keep the old file aside
+                    old = self.path.with_name(f"{self.path.stem}.{time.strftime('%Y%m%d-%H%M%S')}{self.path.suffix}")
+                    self.path.rename(old)
+                    log.info("perf.csv: columns changed – previous file kept as %s", old.name)
+                    new = True
+            self._checked = True
             with self.path.open("a", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
                 if new:
@@ -309,7 +329,7 @@ class Scheduler:
                  notifier: Notifier | None = None, settings: WorkerSettings | None = None,
                  hub: FrameHub | None = None, reload_event: threading.Event | None = None,
                  reloader: Reloader | None = None, crossing_check: bool = False,
-                 perf_csv: Path | None = None) -> None:
+                 perf_csv: Path | None = None, pauses: PauseWatcher | None = None) -> None:
         self.readers = readers
         self.hub = hub
         self.reload_event = reload_event
@@ -345,6 +365,8 @@ class Scheduler:
         self._down_since: dict[int, float] = {}            # perf_counter time a camera stopped being online
         self._offline: set[int] = set()                    # down > OFFLINE_CLOSE_S: incidents closed, `offline`
         self.perf_csv = PerfCsv(perf_csv) if perf_csv is not None else None
+        self.pauses = pauses                               # pause monitoring (None: never paused)
+        self._paused: dict[int, Pause] = {}                # cameras whose detection is paused now
 
     def run(self) -> dict:
         cams = list(self.readers)
@@ -376,11 +398,12 @@ class Scheduler:
                 log_summary("perf", summ, self.readers)
                 self._log_notifier()
                 if self.perf_csv is not None:
-                    self.perf_csv.write(summ, self.readers, self.engines, self.notifier)
+                    self.perf_csv.write(summ, self.readers, self.engines, self.notifier, self._paused)
                 window.reset(now)
                 while next_report <= now:
                     next_report += self.report_every
             self._check_offline(now)
+            self._check_pauses()
             self._heartbeats(now)
             self._publish_health(now)
             if self.show and (slot - now > GUI_PUMP_MIN_IDLE_S or now - self._last_pump > GUI_PUMP_MAX_GAP_S):
@@ -426,8 +449,64 @@ class Scheduler:
             fr = r.latest()
             cams[c] = {"status": self.status(c).value, "input_fps": round(r.fps, 1), "processed_fps": round(len(dq) / 5.0, 1),
                        "last_frame": None if fr is None else iso_time(wall - (now - fr.capture_t)),
-                       "open_incidents": self.engines[c].open_incident_count() if c in self.engines else 0}
+                       "open_incidents": self.engines[c].open_incident_count() if c in self.engines else 0,
+                       **self._pause_health(c)}
         self.hub.set_health({"crossing_check": self.crossing_check, "cameras": cams})
+
+    # ------------------------------------------------------------------ pause monitoring
+
+    def _check_pauses(self, force: bool = False) -> None:
+        """Every 1 s (and after /reload): apply what active_pause() says for each camera. A failed check keeps the
+        last state (PauseWatcher logs it)."""
+        if self.pauses is None:
+            return
+        if force:
+            self.pauses.request()
+        if not self.pauses.poll():
+            return
+        for c in list(self.readers):
+            new, cur = self.pauses.state.get(c), self._paused.get(c)
+            if new is not None and cur is None:
+                self._pause(c, new)
+            elif new is None and cur is not None:
+                self._resume(c, cur)
+            elif new is not None and new != cur:
+                self._paused[c] = new
+                log.info("cam%d: detection still paused, now: %s", c, new.describe())
+
+    def _pause(self, c: int, p: Pause) -> None:
+        e = self.engines.get(c)
+        closes = e.pause(p.start_t) if e is not None else []
+        self.pipelines[c].reset()
+        self._paused[c] = p
+        self._submit_closes(closes)
+        log.info("cam%d: detection PAUSED – %s; closed %d open incident(s) (end_time = pause start %s); detector, "
+                 "tracker and rules stopped for this camera, the reader keeps running", c, p.describe(), len(closes),
+                 iso_time(p.start_t))
+
+    def _resume(self, c: int, p: Pause) -> None:
+        e = self.engines.get(c)
+        closes = e.restart("detection resumed") if e is not None else []  # nothing is open; clears all state
+        self._submit_closes(closes)
+        self.pipelines[c].reset()
+        self._paused.pop(c, None)
+        log.info("cam%d: detection RESUMED (pause %d ended: %s) – tracker and rule windows reset", c, p.pause_id,
+                 p.reason.label)
+
+    def detection(self, c: int) -> DetectionState:
+        return DetectionState.PAUSED if c in self._paused else DetectionState.ACTIVE
+
+    def _process_paused(self, c: int, fr, window: PerfWindow, total: PerfWindow) -> None:
+        """Paused camera: no detector, tracker or rules. The live view gets the plain frame and the banner."""
+        window.paused(c)
+        total.paused(c)
+        p = self._paused[c]
+        now = time.perf_counter()
+        if self.hub is not None and now - self._pub_last.get(c, 0.0) >= HANDOFF_S:
+            self._pub_last[c] = now
+            self.hub.publish(c, fr.image, None, (), [], banner=p.text("-"))
+        if self.show:
+            self._show_image(c, draw_banner(resize_for_display(fr.image, self.display_width)[0], p.text("-")))
 
     def status(self, c: int) -> CameraStatus:
         """The reader's status, but `offline` once the camera has been down longer than OFFLINE_CLOSE_S."""
@@ -459,6 +538,13 @@ class Scheduler:
             for ev in closes:
                 self.notifier.submit(CloseJob(ev))
 
+    def _pause_health(self, c: int) -> dict:
+        p = self._paused.get(c)
+        return {"detection": self.detection(c).value, "pause_reason": p.reason.value if p else None,
+                "pause_label": p.reason.label if p else None,
+                "pause_since": p.starts_at.isoformat(timespec="seconds") if p else None,
+                "pause_until": (p.ends_at.isoformat(timespec="seconds") if p.ends_at else "until resumed") if p else None}
+
     def _heartbeats(self, now: float) -> None:
         """Every HEARTBEAT_INTERVAL_S per camera: status + processed FPS to the notifier (camera_health + msg 6)."""
         if self.notifier is None:
@@ -475,7 +561,9 @@ class Scheduler:
             fr = r.latest()
             wall = time.time()
             last_seen = None if fr is None else wall - (time.perf_counter() - fr.capture_t)
-            self.notifier.submit(HeartbeatJob(c, self.status(c), None if fps is None else round(fps, 2), wall, last_seen))
+            p = self._paused.get(c)
+            self.notifier.submit(HeartbeatJob(c, self.status(c), None if fps is None else round(fps, 2), wall, last_seen,
+                                              self.detection(c), p.reason if p else None))
 
     def _log_notifier(self) -> None:
         if self.notifier is not None:
@@ -526,6 +614,9 @@ class Scheduler:
             self._submit_closes(closes)
             log.info("cam%d: clip looped – pass %d starts; closed %d open incident(s), tracker, rule state and "
                      "phone spots reset", c, fr.loop + 1, len(closes))
+        if c in self._paused:
+            self._process_paused(c, fr, window, total)
+            return
         t_start = time.perf_counter()
         try:
             dets = self.detector.detect(fr.image)
@@ -573,6 +664,7 @@ class Scheduler:
         if self.reload_event is not None and self.reload_event.is_set():
             self.reload_event.clear()
             self._reload()
+            self._check_pauses(force=True)  # /reload: re-read the pauses too
 
     def _reload(self) -> None:
         """Re-read the settings and apply only what changed (see worker/reload.py for validation and diff)."""
@@ -651,6 +743,9 @@ class Scheduler:
                     self._proc_times, self._hb_frames, self._conn, self._down_since):
             dct.pop(cid, None)
         self._offline.discard(cid)
+        self._paused.pop(cid, None)
+        if self.pauses is not None:
+            self.pauses.set_cameras(self.readers)
         if self.hub is not None:
             self.hub.set_cameras(self.readers)
         log.info("cam%d: disabled – reader stopped", cid)
@@ -669,6 +764,8 @@ class Scheduler:
         self._last_seq[cid], self._pass[cid], self._pub_last[cid], self._hb_frames[cid] = 0, 0, 0.0, 0
         self._conn[cid] = 0
         self._proc_times[cid] = deque()
+        if self.pauses is not None:
+            self.pauses.set_cameras(self.readers)
         self._window.add_camera(cid)
         self._total.add_camera(cid)
         if self.hub is not None:
@@ -680,6 +777,9 @@ class Scheduler:
         img = annotate(image, result, self.pipelines[c], self.display_width,
                        [f"cam{c} {r.status.value}  in {r.fps:.1f} fps  {self.detector.device}",
                         f"detect {det_ms:.0f} ms  boxes {len(result.dets)}"])
+        self._show_image(c, img)
+
+    def _show_image(self, c: int, img) -> None:
         name = f"RADS cam{c}"
         if name not in self._windows:
             cv2.namedWindow(name, cv2.WINDOW_AUTOSIZE)
@@ -824,7 +924,7 @@ def _run(args: argparse.Namespace, settings) -> int:
                   display_width=args.display_width, report_every=args.report_every, duration=args.duration,
                   stop=stop, engines=engines, notifier=notifier, settings=ws, hub=hub,
                   reload_event=web.reload_event, reloader=reloader, crossing_check=args.crossing_check,
-                  perf_csv=settings.logs_dir / "perf.csv").run()
+                  perf_csv=settings.logs_dir / "perf.csv", pauses=PauseWatcher(get_engine(), readers)).run()
     except Exception:
         log.exception("worker failed")
         return 1

@@ -46,6 +46,7 @@ class CamStats:
     skipped: int = 0
     stale: int = 0
     errors: int = 0
+    paused: int = 0           # slots not processed because detection was paused (not "missed")
     tracks_max_active: int = 0
     new_track_ids: int = 0
     worker_frames: int = 0        # tracked worker x frame
@@ -107,6 +108,10 @@ class PerfWindow:
     def skip(self, cam: int, n: int = 1) -> None:
         self.cams[cam].skipped += n
 
+    def paused(self, cam: int, n: int = 1) -> None:
+        """A slot without detection because the camera's monitoring is paused."""
+        self.cams[cam].paused += n
+
     def stale(self, cam: int, n: int = 1) -> None:
         """No new frame since the last processed one (or no frame at all)."""
         self.cams[cam].stale += n
@@ -123,6 +128,7 @@ class PerfWindow:
         for c, s in self.cams.items():
             cams[c] = {
                 "processed": s.processed, "skipped": s.skipped, "stale": s.stale, "errors": s.errors,
+                "paused": s.paused,
                 "tracks_max_active": s.tracks_max_active, "new_track_ids": s.new_track_ids,
                 "worker_frames": s.worker_frames,
                 "in_prep_pct": round(100.0 * s.worker_frames_in_prep / s.worker_frames, 1) if s.worker_frames else None,
