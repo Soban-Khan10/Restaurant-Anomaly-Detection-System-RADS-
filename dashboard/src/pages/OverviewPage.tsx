@@ -6,6 +6,7 @@ import { LiveStream } from "../components/LiveStream";
 import { EndPauseDialog, PauseDialog } from "../components/PauseDialog";
 import { Card, CameraStatusBadge, EmptyState, ErrorState, SeverityBadge, Spinner, StatusBadge } from "../components/ui";
 import { formatTime, timeAgo } from "../lib/format";
+import { APPLYING_HINT, APPLYING_NOTE, detectionView } from "../lib/detectionState";
 import { pausedLine, plannedLine } from "../lib/pauseForm";
 import type { Alert, Camera, IncidentSummary } from "../lib/types";
 import { useApi } from "../lib/useApi";
@@ -65,7 +66,8 @@ function CameraTile({ camera, cameras }: { camera: Camera; cameras: Camera[] }) 
   const status = beat?.status ?? camera.status;
   const fps = beat ? beat.fps : camera.fps;
   const m = byCamera(camera.camera_id);
-  const paused = m?.state === "paused" && m.pause ? m.pause : null;
+  const paused = m?.state === "paused" && m.pause ? m.pause : null; // the database decides what is shown
+  const { applying } = detectionView(m, beat); // the camera system has not caught up yet
   const planned = !paused && m?.state === "planned" && m.next_pause ? m.next_pause : null;
 
   return (
@@ -102,7 +104,11 @@ function CameraTile({ camera, cameras }: { camera: Camera; cameras: Camera[] }) 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5">
           <PauseIcon className="h-5 w-5 shrink-0 text-amber-600" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-900">Detection paused – {pausedLine(paused)}</p>
+            <p className="text-sm font-semibold text-amber-900">
+              Detection paused – {pausedLine(paused)}
+              {applying && <span className="ml-1.5 text-xs font-normal text-amber-700" title={APPLYING_HINT}>
+                {APPLYING_NOTE}</span>}
+            </p>
             <p className="text-xs text-amber-800">
               {paused.camera_id === null ? "All cameras · " : ""}Paused by {paused.created_by_name ?? "someone"}
               {paused.note ? ` · ${paused.note}` : ""}
@@ -117,6 +123,7 @@ function CameraTile({ camera, cameras }: { camera: Camera; cameras: Camera[] }) 
           <p className="min-w-0 text-xs text-slate-500">
             {planned ? <>Pause planned: <span className="font-medium text-slate-700">{plannedLine(planned)}</span></>
               : "Detection running"}
+            {applying && <span className="ml-1.5 text-slate-400" title={APPLYING_HINT}>{APPLYING_NOTE}</span>}
           </p>
           {planned ? (
             <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => setDialog("end")}>

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { cameraStreamUrl } from "../lib/api";
+import { APPLYING_HINT, APPLYING_NOTE, detectionView } from "../lib/detectionState";
 import { useLive } from "../live/LiveContext";
 import { useMonitoring } from "../live/MonitoringContext";
 import { CameraIcon, PauseIcon } from "./Icons";
@@ -53,7 +54,7 @@ export function LiveStream({ cameraId, name, aspect = 16 / 9 }: { cameraId: numb
   }
 
   const shown = problem ?? (heartbeat === "offline" ? "offline" : null);
-  const detectionPaused = byCamera(cameraId)?.state === "paused" || cameras[cameraId]?.detection === "paused";
+  const detection = detectionView(byCamera(cameraId), cameras[cameraId]);
   return (
     <div className="relative w-full overflow-hidden bg-slate-900" style={{ aspectRatio: String(aspect) }}>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
@@ -64,10 +65,17 @@ export function LiveStream({ cameraId, name, aspect = 16 / 9 }: { cameraId: numb
         <img key={attempt} src={url} alt={`Live view of ${name}`} onError={failed}
           className="absolute inset-0 h-full w-full object-contain" />
       )}
-      {detectionPaused && !shown && (
+      {detection.paused && !shown && (
         <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-2.5 py-1
           text-xs font-semibold text-white shadow" role="status">
           <PauseIcon className="h-4 w-4" /> Detection paused
+          {detection.applying && <span className="font-normal" title={APPLYING_HINT}>· {APPLYING_NOTE}</span>}
+        </span>
+      )}
+      {!detection.paused && detection.applying && !shown && (
+        <span className="absolute top-3 left-3 rounded-md bg-slate-800/80 px-2.5 py-1 text-xs text-white shadow"
+          role="status" title={APPLYING_HINT}>
+          Resuming detection · {APPLYING_NOTE}
         </span>
       )}
       {shown && (
