@@ -97,6 +97,7 @@ class AlertChannel(StrEnum):
     DASHBOARD = "dashboard"
     WHATSAPP = "whatsapp"
     TELEGRAM = "telegram"
+    EMAIL = "email"
 
 
 class AlertKind(StrEnum):
