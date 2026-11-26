@@ -268,3 +268,20 @@ and the picture stays on the RADS computer, where only signed-in users can see i
 `true`, each email carries the snapshot: it is then copied to Google's servers and to every recipient's phone, and
 RADS can no longer delete it or log who sees it. Turn it on only if the restaurant and its staff have agreed to that.
 Every email ends with: "Automatic alert from RADS. Detections can be wrong; a person must review every incident."
+## Demo start/stop
+
+Two scripts start and stop the whole system (app server, pipeline worker, dashboard) with one command each, after
+the one-time set-up above (`.venv`, `.env`, database, model file, `npm install` in `dashboard/`):
+
+```bash
+scripts/start_demo.sh            # the real cameras (addresses from the database)
+scripts/start_demo.sh --clips    # the recorded clips as fake live cameras (needs ~/rads_tools/rads_cams.sh, see worker/README_worker.md)
+scripts/stop_demo.sh             # stop everything
+```
+
+`start_demo.sh` checks the prerequisites and that ports 8000, 8001 and 5173 are free, starts the app server, the
+worker and the dashboard in that order (waiting for each to answer), keeps the Mac awake with `caffeinate` while the
+worker runs, prints each part's status and the cameras' online/offline state, and opens http://localhost:5173.
+Output goes to `logs/demo/app.log`, `worker.log` and `dashboard.log`; process ids to `logs/demo/pids`.
+`stop_demo.sh` stops the dashboard, the worker, the app server (and the fake cameras and `caffeinate`), politely
+first, and confirms the ports are free. Without `logs/demo/pids` it finds the processes by their ports.
