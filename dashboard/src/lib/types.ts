@@ -11,6 +11,7 @@ export interface User {
   role: Role;
   full_name: string | null;
   phone: string | null;
+  email: string | null;
   active: boolean;
   created_at: string;
   last_login: string | null;
@@ -84,7 +85,7 @@ export interface Hazard {
 export interface Alert {
   alert_id: number;
   incident_id: number;
-  channel: "dashboard" | "whatsapp" | "telegram";
+  channel: "dashboard" | "whatsapp" | "telegram" | "email";
   kind: "first" | "escalation";
   sent_at: string;
   status: "sent" | "failed";
@@ -250,4 +251,41 @@ export interface CameraMonitoring {
   state: "active" | "paused" | "planned";
   pause: Pause | null;
   next_pause: Pause | null;
+}
+
+/** GET /api/alerts/status (Admin). Never contains the SMTP password. */
+export interface EmailAlertResult {
+  alert_id: number;
+  incident_id: number;
+  kind: "first" | "escalation";
+  sent_at: string;
+  status: "sent" | "failed";
+  error: string | null;
+  recipient: string | null;
+}
+
+export interface TestEmailResult {
+  status: "sent" | "failed";
+  to: string | null;
+  reason: string | null;
+}
+
+export interface AlertStatus {
+  email: {
+    enabled: boolean;
+    missing: string[];
+    host: string | null;
+    port: number;
+    user: string | null;
+    sender: string | null;
+    starttls: boolean;
+    dashboard_url: string | null;
+    attach_snapshot: boolean;
+    managers_with_email: number;
+    admins_with_email: number;
+    last_alert: EmailAlertResult | null;
+    last_test: (TestEmailResult & { at: string; by: string }) | null;
+  };
+  whatsapp: boolean;
+  telegram: boolean;
 }

@@ -9,6 +9,7 @@ RedactSecrets:
     Bearer <jwt>                -> Bearer ***       (an Authorization header, if anything ever prints one)
     X-RADS-Internal: <token>    -> X-RADS-Internal: ***
     api.telegram.org/bot<token> -> api.telegram.org/bot***   (httpx logs each request URL at INFO)
+    the value of SMTP_PASSWORD, RADS_JWT_SECRET, RADS_INTERNAL_TOKEN, WHATSAPP_TOKEN, TELEGRAM_BOT_TOKEN -> ***
 
 install() attaches the filter to uvicorn's own loggers (so records are cleaned where they are made) and to every
 handler of the root and uvicorn loggers (so the app's rads.* loggers and libraries such as httpx are covered).
@@ -16,6 +17,7 @@ handler of the root and uvicorn loggers (so the app's rads.* loggers and librari
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
@@ -29,7 +31,24 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
 _FORMATTER = logging.Formatter()
 
 
+# Settings whose values must never appear in a log line, whatever prints them (read at log time).
+SECRET_SETTINGS = ("SMTP_PASSWORD", "RADS_JWT_SECRET", "RADS_INTERNAL_TOKEN", "WHATSAPP_TOKEN", "TELEGRAM_BOT_TOKEN")
+
+
+def _secret_values() -> list[str]:
+    values = []
+    for name in SECRET_SETTINGS:
+        v = os.environ.get(name, "").split(" #", 1)[0].strip()
+        for form in {v, v.replace(" ", "")}:  # a Gmail app password may be written with or without its spaces
+            if len(form) >= 6:  # very short values would match ordinary words
+                values.append(form)
+    return sorted(values, key=len, reverse=True)
+
+
 def redact(text: str) -> str:
+    for secret in _secret_values():
+        if secret in text:
+            text = text.replace(secret, SECRET)
     for pattern, repl in _PATTERNS:
         text = pattern.sub(repl, text)
     return text

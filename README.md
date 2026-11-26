@@ -182,3 +182,89 @@ requests from a dashboard at `http://localhost:5173` or `http://127.0.0.1:5173`.
   `dashboard/.env` points to the wrong address.
 - **Windows: `Activate.ps1 cannot be loaded because running scripts is disabled`.** Run
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then activate again.
+
+## Email alerts
+
+RADS can email staff when it opens an incident. The alert always appears on the dashboard first; the email is an
+extra copy for someone who is not looking at the screen.
+
+- **New incident** → every active **Manager** who has an email address.
+- **Not reviewed for 10 minutes** (still New) → every active **Admin** who has an email address.
+- Each incident sends at most one new-incident email and one escalation email to each person, even if the app server
+  restarts. Incidents that start while monitoring is paused send no email.
+- Emails go out only for incidents that started within the last 60 minutes. After the app server or the computer
+  was off (or asleep), older incidents still get their dashboard alert and escalation, but no email, so nobody's
+  inbox is flooded with old incidents.
+- Technical users get no alert emails.
+
+Telegram is also supported (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`), but Telegram is not available in Pakistan,
+so leave those settings empty. WhatsApp (`WHATSAPP_TOKEN`) is optional and also off by default.
+
+### 1. Create a Gmail app password
+
+Use a Gmail account just for RADS (for example `rads.alerts.yourrestaurant@gmail.com`), not a personal one.
+
+1. Sign in to that account and turn on **2-Step Verification** at <https://myaccount.google.com/security>. App
+   passwords only exist once this is on.
+2. Open <https://myaccount.google.com/apppasswords>, type a name such as `RADS` and click **Create**.
+3. Google shows a 16-letter password such as `abcd efgh ijkl mnop`. Copy it into `.env` (next step). You can keep
+   or drop the spaces. Google shows it only once; if you lose it, delete it and create a new one.
+
+The app password is not your Gmail password. If it leaks, delete it on the same page; the Gmail account stays safe.
+
+### 2. Settings in `.env`
+
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=rads.alerts.yourrestaurant@gmail.com
+SMTP_PASSWORD=abcd efgh ijkl mnop
+SMTP_FROM=RADS Alerts <rads.alerts.yourrestaurant@gmail.com>
+SMTP_STARTTLS=true
+# Optional: adds an "Open incident" button to each email. Use the address staff open on their phones.
+RADS_DASHBOARD_URL=http://192.168.1.10:5173
+# Optional: attach the snapshot to each email (see the privacy note below).
+EMAIL_ATTACH_SNAPSHOT=false
+```
+
+Email is on only when `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` are all set; otherwise RADS sends
+no email and shows no error. Put comments on their own lines, not after a value. Restart the app server after any
+change. The server log then shows `alert channels: dashboard, email`.
+
+Then give people their address: **Users** → **Edit** → **Email**. The list shows **gets email alerts** next to every
+active Manager and Admin who will get them.
+
+RADS never prints, logs or stores the password; it is filtered out of every log line. Keep `.env` out of git (it is
+already in `.gitignore`).
+
+### 3. Test it
+
+On the **Users** page (Admins only), the **Alerts** card shows whether email is on, the Gmail account and server
+being used (never the password), how many Managers and Admins will get emails, and the result of the last email
+alert. Click **Send test email**: it goes to your own email address, or to the address typed in the box. Within a
+minute you should get **"RADS test email – alerts are working"**. If it fails, the card says why in plain words.
+
+Every test is recorded in the audit log. The **Alerts sent** list on each incident shows one row per email, with the
+person's name and Sent or Failed.
+
+### 4. Troubleshooting
+
+| What the card or incident says | What to do |
+| --- | --- |
+| Email alerts are off. Set SMTP_HOST, ... in the .env file | Fill in the four settings, then restart the app server. |
+| Gmail rejected the login – check SMTP_USER and the app password | `SMTP_USER` must be the full Gmail address, and `SMTP_PASSWORD` an app password (not the Gmail password). Create a new one if unsure. 2-Step Verification must be on. |
+| Could not reach the mail server smtp.gmail.com:587 (timed out) – tried 3 times | No internet, or the network blocks port 587. Check the connection; try another network. RADS retries 3 times. |
+| Secure connection (STARTTLS) ... failed | Use `SMTP_PORT=587` with `SMTP_STARTTLS=true`. |
+| The mail server refused the address ... (error 550) | The recipient's email address is wrong. Fix it on the Users page. |
+| no recipients with an email address | No active Manager (or, for escalations, Admin) has an email. Add one on the Users page. |
+| The test says Sent but nothing arrives | Look in the Spam folder and mark it "Not spam". Check the address on the Users page. |
+
+Gmail allows about 500 emails a day from a normal account, far more than RADS sends.
+
+### Privacy: `EMAIL_ATTACH_SNAPSHOT`
+
+Snapshots show kitchen staff. With `EMAIL_ATTACH_SNAPSHOT=false` (the default) emails contain only text and a link,
+and the picture stays on the RADS computer, where only signed-in users can see it and every view is logged. With
+`true`, each email carries the snapshot: it is then copied to Google's servers and to every recipient's phone, and
+RADS can no longer delete it or log who sees it. Turn it on only if the restaurant and its staff have agreed to that.
+Every email ends with: "Automatic alert from RADS. Detections can be wrong; a person must review every incident."

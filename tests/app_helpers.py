@@ -24,6 +24,9 @@ os.environ["RADS_JWT_SECRET"] = "test-secret-not-for-production-0123456789"
 os.environ["RADS_INTERNAL_TOKEN"] = "test-internal-token-0123456789"
 os.environ["CAM1_RTSP"] = "rtsp://user:secret-cam-pass@192.0.2.1:554/1"
 os.environ["CAM2_RTSP"] = "rtsp://user:secret-cam-pass@192.0.2.2:554/1"
+# .env may hold real Gmail settings: email is off in every test (tests that need it mock SMTP).
+for _name in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM", "RADS_DASHBOARD_URL", "EMAIL_ATTACH_SNAPSHOT"):
+    os.environ[_name] = ""
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402

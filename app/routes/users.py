@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.audit import diff, write_audit
 from app.auth import PASSWORD_MAX_BYTES, PASSWORD_MIN_LEN, ROLES_USERS, hash_password
 from app.deps import CurrentUser, get_db, require_role
+from app.email_alerts import valid_email
 from shared.contract import RoleName, now_iso
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -30,6 +31,19 @@ def _check_password(pw: str) -> str:
 
 
 Password = Annotated[str, AfterValidator(_check_password)]
+
+
+def _check_email(v: str | None) -> str | None:
+    """Optional: blank -> None (no email alerts); otherwise it must look like an email address."""
+    if v is None or not v.strip():
+        return None
+    v = v.strip()
+    if not valid_email(v):
+        raise ValueError("enter a valid email address, for example name@example.com")
+    return v
+
+
+Email = Annotated[str | None, AfterValidator(_check_email)]
 Username = Annotated[str, Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.\-]+$")]
 
 
@@ -39,6 +53,7 @@ class UserOut(BaseModel):
     role: RoleName
     full_name: str | None
     phone: str | None
+    email: str | None
     active: bool
     created_at: str
     last_login: str | None
@@ -50,6 +65,7 @@ class UserCreate(BaseModel):
     role: RoleName
     full_name: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=32)
+    email: Email = Field(default=None, max_length=254, description="for email alerts (Managers, Admins)")
     active: bool = True
 
 
@@ -58,10 +74,11 @@ class UserUpdate(BaseModel):
     role: RoleName | None = None
     full_name: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=32)
+    email: Email = Field(default=None, max_length=254, description="empty or null removes it")
     active: bool | None = None
 
 
-_SELECT = ("SELECT u.user_id, u.username, r.name AS role, u.full_name, u.phone, u.active, "
+_SELECT = ("SELECT u.user_id, u.username, r.name AS role, u.full_name, u.phone, u.email, u.active, "
            "u.created_at, u.last_login FROM users u JOIN roles r ON r.role_id = u.role_id")
 
 
@@ -116,14 +133,14 @@ def create_user(body: UserCreate, request: Request, admin: CurrentUser = Depends
     if db.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": body.username}).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
     user_id = db.execute(
-        text("INSERT INTO users (role_id, username, password_hash, full_name, phone, active, created_at) "
-             "VALUES (:r, :u, :h, :f, :p, :a, :t) RETURNING user_id"),
+        text("INSERT INTO users (role_id, username, password_hash, full_name, phone, email, active, created_at) "
+             "VALUES (:r, :u, :h, :f, :p, :e, :a, :t) RETURNING user_id"),
         {"r": _role_id(db, body.role), "u": body.username, "h": hash_password(body.password),
-         "f": body.full_name, "p": body.phone, "a": int(body.active), "t": now_iso()},
+         "f": body.full_name, "p": body.phone, "e": body.email, "a": int(body.active), "t": now_iso()},
     ).scalar_one()
     write_audit(db, "user_create", user_id=admin.user_id, target_type="user", target_id=user_id,
                 details={"username": body.username, "role": body.role.value, "full_name": body.full_name,
-                         "phone": body.phone, "active": body.active},
+                         "phone": body.phone, "email": body.email, "active": body.active},
                 request=request)
     db.commit()
     return fetch_user(db, user_id)
@@ -143,7 +160,7 @@ def update_user(user_id: int, body: UserUpdate, request: Request, admin: Current
     sets: dict[str, object] = {}
     if "role" in changes:
         sets["role_id"] = _role_id(db, changes["role"])
-    for col in ("full_name", "phone"):
+    for col in ("full_name", "phone", "email"):
         if col in changes:
             sets[col] = changes[col]
     if "active" in changes:

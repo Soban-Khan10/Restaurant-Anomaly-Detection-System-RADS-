@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app import alerts, log_redaction, pauses, retention, ws
 from app.routes import (admin, auth, cameras, evidence, incidents, internal, lookups, reports, rules, users,
                         zones)
+from app.routes import alert_settings
 from app.routes import pauses as pause_routes
 from shared.config import Settings, get_settings
 from shared.contract import TZ
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(incidents.router)
+    app.include_router(alert_settings.router)  # /api/alerts/status, /test-email (before /api/alerts)
     app.include_router(lookups.router)
     app.include_router(evidence.router)
     app.include_router(cameras.router)

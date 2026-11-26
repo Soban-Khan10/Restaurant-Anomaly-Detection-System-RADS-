@@ -294,11 +294,13 @@ const CHANNEL_LABEL: Record<IncidentAlert["channel"], string> = {
   dashboard: "Dashboard",
   whatsapp: "WhatsApp",
   telegram: "Telegram",
+  email: "Email",
 };
 
 function recipient(a: IncidentAlert): string {
   if (a.channel === "dashboard") return "everyone using the dashboard";
   if (a.channel === "telegram") return "the Telegram group";
+  if (a.channel === "email" && a.user_id === null) return "nobody (no Manager or Admin has an email address)";
   return a.recipient_name ?? "a user";
 }
 

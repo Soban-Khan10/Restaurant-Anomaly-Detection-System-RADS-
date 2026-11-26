@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
+import EmailAlertsCard from "../components/EmailAlertsCard";
 import { CheckIcon, PlusIcon } from "../components/Icons";
 import { Modal } from "../components/Modal";
 import { Card, EmptyState, ErrorState, Spinner } from "../components/ui";
@@ -8,14 +9,14 @@ import { ROLE_LABEL, formatDateTime } from "../lib/format";
 import type { Role, User } from "../lib/types";
 import { useApi } from "../lib/useApi";
 import {
-  PASSWORD_MIN, emptyForm, formFromUser, serverError, userPayload, validateUserForm, type Mode, type UserFormErrors,
+  PASSWORD_MIN, emptyForm, formFromUser, getsEmailAlerts, serverError, userPayload, validateUserForm, type Mode, type UserFormErrors,
   type UserFormValues,
 } from "../lib/userForm";
 
 const ROLES: Role[] = ["Admin", "Manager", "Technical"];
 const ROLE_CAN: Record<Role, string> = {
-  Admin: "Can do everything, including managing users, cameras and rules.",
-  Manager: "Reviews incidents, gets WhatsApp alerts and creates reports.",
+  Admin: "Can do everything, including managing users, cameras and rules. Gets the escalation email.",
+  Manager: "Reviews incidents, gets the first alert email and creates reports.",
   Technical: "Sets up cameras, areas and detection rules. Cannot review incidents.",
 };
 
@@ -126,6 +127,15 @@ function UserForm({ mode, user, isSelf, onClose, onSaved }: {
             aria-invalid={!!errors.phone} aria-describedby={describedBy("u-phone", "phone")} />
         </FormField>
 
+        <FormField id="u-email" label="Email (optional)" error={errors.email}
+          hint={values.role === "Technical" ? "Technical users do not get alert emails."
+            : values.role === "Admin" ? "Gets an email when an incident is not reviewed for 10 minutes."
+            : "Gets an email for every new incident."}>
+          <input id="u-email" type="email" className={`field ${invalid("email")}`} autoComplete="off"
+            value={values.email} onChange={(e) => set("email", e.target.value)}
+            aria-invalid={!!errors.email} aria-describedby={describedBy("u-email", "email")} />
+        </FormField>
+
         <FormField id="u-password" label={mode === "create" ? "Password" : "New password (optional)"}
           error={errors.password}
           hint={mode === "create" ? `At least ${PASSWORD_MIN} characters. Give it to the person privately.`
@@ -203,6 +213,7 @@ export default function UsersPage() {
   const [flash, setFlash] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [changes, setChanges] = useState(0); // the Alerts card recounts who gets email after a change
 
   /** Show the change at once (with the success message), then reload the list from the server. */
   const done = (message: string, changed: User) => {
@@ -214,6 +225,7 @@ export default function UsersPage() {
     setFlash(message);
     setRowError(null);
     users.reload();
+    setChanges((n) => n + 1);
   };
 
   async function reactivate(u: User) {
@@ -246,6 +258,8 @@ export default function UsersPage() {
       )}
       {rowError && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{rowError}</p>}
 
+      <EmailAlertsCard refreshKey={changes} />
+
       <Card title="People who can sign in to RADS" action={
         <button type="button" className="btn-primary shrink-0 whitespace-nowrap !py-1.5"
           onClick={() => { setFlash(null); setEditing("new"); }}>
@@ -257,12 +271,13 @@ export default function UsersPage() {
           : list.length === 0 ? <EmptyState title="No users yet" />
           : (
             <div className="relative overflow-x-auto">
-              <table className="w-full min-w-[48rem] text-left text-sm">
+              <table className="w-full min-w-[56rem] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-medium tracking-wide text-slate-500
                   uppercase">
                   <tr>
                     <th scope="col" className="px-5 py-3">Name</th>
                     <th scope="col" className="px-4 py-3">Role</th>
+                    <th scope="col" className="px-4 py-3">Email</th>
                     <th scope="col" className="px-4 py-3">Phone</th>
                     <th scope="col" className="px-4 py-3">Status</th>
                     <th scope="col" className="px-4 py-3">Last signed in</th>
@@ -282,6 +297,13 @@ export default function UsersPage() {
                           <p className="text-xs text-slate-500">{u.username}</p>
                         </td>
                         <td className="px-4 py-3 text-slate-700">{ROLE_LABEL[u.role]}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          <p className="break-all">{u.email || "—"}</p>
+                          {getsEmailAlerts(u) && (
+                            <p className="mt-0.5 inline-flex rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium
+                              text-brand-800 ring-1 ring-brand-200 ring-inset">gets email alerts</p>
+                          )}
+                        </td>
                         <td className="px-4 py-3 whitespace-nowrap text-slate-700">{u.phone || "—"}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
