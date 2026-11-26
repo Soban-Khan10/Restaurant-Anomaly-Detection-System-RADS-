@@ -161,6 +161,30 @@ def test_reload_after_create_and_end(ctx):
     assert r.headers["X-RADS-Worker-Reload"] == "ok" and ctx.worker.reloads == 2
 
 
+def test_cancel_reloads_and_every_change_is_audited_with_user_time_and_reason(ctx):
+    before = datetime.now(TZ).replace(microsecond=0)
+    planned = create(ctx, "tech", camera_id=1, reason="closed", starts_at=at(hours=2), duration_minutes=30)
+    assert planned.json()["state"] == "planned" and ctx.worker.reloads == 1
+    r = end(ctx, planned.json()["pause_id"], "manager")                   # cancel the planned pause
+    assert r.json()["state"] == "cancelled"
+    assert r.headers["X-RADS-Worker-Reload"] == "ok" and ctx.worker.reloads == 2
+    active = create(ctx, "admin", camera_id=2, reason="maintenance")
+    end(ctx, active.json()["pause_id"], "tech")                           # resume an active one
+    assert ctx.worker.reloads == 4
+
+    rows = ctx.audit("pause_create") + ctx.audit("pause_end")
+    got = [(r["action"], r["user_id"], r["target_id"], r["details"]["reason"], r["details"].get("action"))
+           for r in rows]
+    assert got == [
+        ("pause_create", ctx.ids["tech"], planned.json()["pause_id"], "closed", None),
+        ("pause_create", ctx.ids["admin"], active.json()["pause_id"], "maintenance", None),
+        ("pause_end", ctx.ids["manager"], planned.json()["pause_id"], "closed", "cancelled"),
+        ("pause_end", ctx.ids["tech"], active.json()["pause_id"], "maintenance", "resumed"),
+    ]
+    for row in rows:  # when it happened
+        assert before <= datetime.fromisoformat(row["created_at"]) <= datetime.now(TZ)
+
+
 def test_worker_down_still_saves(ctx):
     ctx.worker.down = True
     r = create(ctx, camera_id=1)
