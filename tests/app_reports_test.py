@@ -142,11 +142,11 @@ def test_failure_leaves_no_orphan_file(ctx, data, monkeypatch):
 
 # ---------------------------------------------------------------- list + download
 
-def test_list_newest_first_for_any_logged_in_user(ctx):
+def test_list_newest_first_for_admin_and_manager(ctx):
     h = ctx.headers("admin")
     ids = [ctx.client.post("/api/reports", json={**PERIOD, "format": f}, headers=h).json()["report_id"]
            for f in ("pdf", "xlsx")]
-    for user in ("admin", "manager", "tech"):
+    for user in ("admin", "manager"):
         r = ctx.client.get("/api/reports", headers=ctx.headers(user))
         assert r.status_code == 200 and [x["report_id"] for x in r.json()] == ids[::-1]
     assert ctx.client.get("/api/reports").status_code == 401
@@ -154,14 +154,31 @@ def test_list_newest_first_for_any_logged_in_user(ctx):
 
 def test_download(ctx, data):
     rep = ctx.client.post("/api/reports", json={**PERIOD, "format": "xlsx"}, headers=ctx.headers("admin")).json()
-    r = ctx.client.get(rep["download_url"], headers=ctx.headers("tech"))
+    r = ctx.client.get(rep["download_url"], headers=ctx.headers("manager"))
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert rep["file_name"] in r.headers["content-disposition"]
     assert r.content == (ctx.db_path.parent / "reports" / rep["file_name"]).read_bytes()
     audit = ctx.audit("report_download")
-    assert len(audit) == 1 and audit[0]["user_id"] == ctx.ids["tech"] and audit[0]["target_id"] == rep["report_id"]
+    assert len(audit) == 1 and audit[0]["user_id"] == ctx.ids["manager"] and audit[0]["target_id"] == rep["report_id"]
     assert ctx.client.get(rep["download_url"]).status_code == 401
+
+
+def test_every_report_route_is_admin_and_manager_only(ctx, data):
+    """Technical users can neither make, list nor download reports (403); nobody can without a login (401)."""
+    rep = ctx.client.post("/api/reports", json={**PERIOD, "format": "pdf"}, headers=ctx.headers("admin")).json()
+    calls = [("POST", "/api/reports", {"json": {**PERIOD, "format": "xlsx"}}),
+             ("GET", "/api/reports", {}),
+             ("GET", rep["download_url"], {})]
+    for method, url, kw in calls:
+        assert ctx.client.request(method, url, **kw).status_code == 401, (method, url)
+        r = ctx.client.request(method, url, headers=ctx.headers("tech"), **kw)
+        assert r.status_code == 403 and r.json()["detail"] == "Your role is not allowed to do this", (method, url)
+        for user in ("admin", "manager"):
+            r = ctx.client.request(method, url, headers=ctx.headers(user), **kw)
+            assert r.status_code in (200, 201), (user, method, url, r.status_code)
+    # the refused download wrote no audit row (only the two allowed downloads did)
+    assert [a["user_id"] for a in ctx.audit("report_download")] == [ctx.ids["admin"], ctx.ids["manager"]]
 
 
 def test_download_missing_file_and_unknown_and_traversal(ctx):

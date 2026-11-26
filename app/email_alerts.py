@@ -24,6 +24,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable
 
+from app.log_redaction import mask_address
 from shared.contract import TZ, AlertChannel, AlertKind
 
 log = logging.getLogger("rads.app.email")
@@ -261,14 +262,14 @@ class EmailSender:
                 if 400 <= code < 500:
                     reason = f"The mail server is busy (temporary error {code})"
                 else:
-                    raise self._safe(f"The mail server refused the address {address} (error {code})") from None
+                    raise self._safe(f"The mail server refused the address {mask_address(address)} (error {code})") from None
             except smtplib.SMTPSenderRefused as e:
                 raise self._safe(f"The mail server refused the sender address SMTP_FROM (error {e.smtp_code})") from None
             except smtplib.SMTPResponseException as e:
                 if 400 <= e.smtp_code < 500:
                     reason = f"The mail server is busy (temporary error {e.smtp_code})"
                 elif e.smtp_code == 550:
-                    raise self._safe(f"The mail server refused the address {address} (error 550)") from None
+                    raise self._safe(f"The mail server refused the address {mask_address(address)} (error 550)") from None
                 else:
                     raise self._safe(f"The mail server refused the email (error {e.smtp_code}: "
                                      f"{_server_text(e)})") from None
@@ -282,7 +283,7 @@ class EmailSender:
             except smtplib.SMTPException as e:
                 reason = f"Email could not be sent ({type(e).__name__})"
             if attempt < ATTEMPTS:
-                log.info("email to %s: attempt %d failed (%s), trying again", address, attempt, reason)
+                log.info("email to %s: attempt %d failed (%s), trying again", mask_address(address), attempt, reason)
                 self.sleep(RETRY_WAIT_S[attempt - 1])
         raise self._safe(f"{reason} – tried {ATTEMPTS} times")
 

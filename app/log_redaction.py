@@ -10,6 +10,7 @@ RedactSecrets:
     X-RADS-Internal: <token>    -> X-RADS-Internal: ***
     api.telegram.org/bot<token> -> api.telegram.org/bot***   (httpx logs each request URL at INFO)
     the value of SMTP_PASSWORD, RADS_JWT_SECRET, RADS_INTERNAL_TOKEN, WHATSAPP_TOKEN, TELEGRAM_BOT_TOKEN -> ***
+    any email address           -> b***@gmail.com   (privacy: the code logs "user #<id>" or a masked address anyway)
 
 install() attaches the filter to uvicorn's own loggers (so records are cleaned where they are made) and to every
 handler of the root and uvicorn loggers (so the app's rads.* loggers and libraries such as httpx are covered).
@@ -28,7 +29,17 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(x-rads-internal[\"']?\s*[:=]\s*[\"']?)[^\s\"',;)\]}]+", re.IGNORECASE), rf"\g<1>{SECRET}"),
     (re.compile(r"(/bot)\d+:[\w-]+"), rf"\g<1>{SECRET}"),
 ]
+_EMAIL = re.compile(r"\b([A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]*@((?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,})\b")
 _FORMATTER = logging.Formatter()
+
+
+def mask_address(address: str) -> str:
+    """For log lines and stored error texts: basima@gmail.com -> b***@gmail.com, +923001234567 -> +92*******67."""
+    a = (address or "").strip()
+    if "@" in a:
+        local, _, domain = a.rpartition("@")
+        return f"{local[:1]}***@{domain}"
+    return a[:3] + "*" * max(len(a) - 5, 3) + a[-2:] if len(a) > 6 else "***"
 
 
 # Settings whose values must never appear in a log line, whatever prints them (read at log time).
@@ -51,7 +62,7 @@ def redact(text: str) -> str:
             text = text.replace(secret, SECRET)
     for pattern, repl in _PATTERNS:
         text = pattern.sub(repl, text)
-    return text
+    return _EMAIL.sub(r"\1***@\2", text)
 
 
 def _clean_arg(value: Any) -> Any:

@@ -294,8 +294,8 @@ def test_temporary_errors_are_tried_three_times(error, reason):
     (smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted"),
      "Gmail rejected the login – check SMTP_USER and the app password (SMTP_PASSWORD)"),
     (smtplib.SMTPRecipientsRefused({"a@example.com": (550, b"5.1.1 no such user")}),
-     "The mail server refused the address a@example.com (error 550)"),
-    (smtplib.SMTPDataError(550, b"5.7.1 rejected"), "The mail server refused the address a@example.com (error 550)"),
+     "The mail server refused the address a***@example.com (error 550)"),
+    (smtplib.SMTPDataError(550, b"5.7.1 rejected"), "The mail server refused the address a***@example.com (error 550)"),
     (smtplib.SMTPDataError(554, b"5.7.0 message looks like spam"),
      "The mail server refused the email (error 554: 5.7.0 message looks like spam)"),
 ])
@@ -613,3 +613,47 @@ def test_users_email_field_validated_and_audited(ctx):
     assert changes[0]["email"] == {"old": "sara@example.com", "new": "sara.k@example.com"}
     assert changes[1]["email"] == {"old": "sara.k@example.com", "new": None}
     assert ctx.audit("user_create")[0]["details"]["email"] == "sara@example.com"
+
+
+# ---------------------------------------------------------------- privacy: no recipient address in the logs
+
+def test_no_recipient_address_in_the_logs(ctx, staff, smtp_on, caplog):
+    """caplog sees the records as the code makes them, before the log filter: the code itself never logs an address
+    (it logs "user #<id>" or b***@example.com)."""
+    caplog.set_level(logging.DEBUG)
+    full = ["m1@example.com", "m2@example.com", "a1@example.com", "boss@example.com", "typed@example.com"]
+    ctx.execute("UPDATE users SET email = 'boss@example.com' WHERE user_id = :u", u=ctx.ids["admin"])
+    h = ctx.headers("admin")
+    ctx.client.post("/api/alerts/test-email", headers=h)                                  # to the admin's own
+    ctx.client.post("/api/alerts/test-email", json={"to": "typed@example.com"}, headers=h)  # to a typed one
+    smtp_on.script = [smtplib.SMTPAuthenticationError(535, b"no")]
+    ctx.client.post("/api/alerts/test-email", json={"to": "typed@example.com"}, headers=h)  # failed
+
+    refused = smtplib.SMTPRecipientsRefused({"x": (550, b"no such user")})
+    busy = smtplib.SMTPDataError(421, b"try later")
+    ctx.senders.append(sender(ctx, FakeSMTP(busy, None, refused)))  # m1: retried then sent; m2: refused
+    iid = ctx.add_incident(start_time=iso(NOW - timedelta(minutes=11)))
+    post_new(ctx, iid)
+    alerts.run_escalation(ctx.Session, now=NOW)                    # to a1
+
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "test email by user #%d to user #%d: sent" % (ctx.ids["admin"], ctx.ids["admin"]) in logged
+    assert "to t***@example.com: sent" in logged and "to t***@example.com: failed" in logged
+    assert "email to m***@example.com: attempt 1 failed" in logged
+    assert f"email alert for incident {iid} to user #{staff['m2']} failed: The mail server refused the address " \
+           "m***@example.com (error 550)" in logged
+    for address in full:
+        assert address not in logged, address
+    # the stored error text is masked too (it is shown on the dashboard and copied into logs)
+    assert [r["error"] for r in email_rows(ctx) if r["status"] == "failed"] == [
+        "The mail server refused the address m***@example.com (error 550)"]
+
+
+def test_log_filter_masks_any_email_address_that_slips_through():
+    record = logging.LogRecord("rads.test", logging.INFO, __file__, 1, "sent to %s and %s", (
+        "basimamaham@gmail.com", "Ahmad <a.k+rads@sub.example.co.uk>"), None)
+    log_redaction.FILTER.filter(record)
+    assert record.getMessage() == "sent to b***@gmail.com and Ahmad <a***@sub.example.co.uk>"
+    assert log_redaction.redact("rtsp://rads:Kitchen2026@192.168.1.64:554/1") == \
+        "rtsp://rads:Kitchen2026@192.168.1.64:554/1"  # not an email address: left alone
+    assert log_redaction.mask_address("+923001234567") == "+92********67"

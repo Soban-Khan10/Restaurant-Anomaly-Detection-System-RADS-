@@ -5,7 +5,7 @@ import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 import { LiveProvider } from "./live/LiveContext";
 import { MonitoringProvider } from "./live/MonitoringContext";
-import { rolesFor } from "./nav";
+import { noAccessTitle, rolesFor } from "./nav";
 import IncidentDetailPage from "./pages/IncidentDetailPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import LoginPage from "./pages/LoginPage";
@@ -31,7 +31,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
 /** Shows the page only to the roles that have it in their menu (the server checks again on every request). */
 function RoleGate({ path, children }: { path: string; children: ReactNode }) {
   const { hasRole } = useAuth();
-  return hasRole(...rolesFor(path)) ? <>{children}</> : <NoAccess />;
+  return hasRole(...rolesFor(path)) ? <>{children}</> : <NoAccess title={noAccessTitle(path)} />;
 }
 
 export default function App() {

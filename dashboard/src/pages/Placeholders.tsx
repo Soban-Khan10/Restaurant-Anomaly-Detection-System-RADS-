@@ -14,9 +14,9 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export function NoAccess() {
+export function NoAccess({ title = "You don't have access to this page" }: { title?: string }) {
   return (
-    <Panel title="You don't have access to this page">
+    <Panel title={title}>
       Your role does not include this part of RADS. Ask an administrator if you need it.
       <div><Link to="/" className="mt-4 inline-block font-medium text-brand-700 hover:underline">Go to overview</Link></div>
     </Panel>

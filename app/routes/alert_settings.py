@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from app import alerts
 from app.audit import write_audit
 from app.deps import CurrentUser, get_db, require_role
+from app.log_redaction import mask_address
 from app.email_alerts import EmailError, EmailSender, email_config, test_content, valid_email
 from shared.contract import RoleName, now_iso
 
@@ -100,6 +101,7 @@ async def test_email(request: Request, body: TestEmailIn | None = None, user: Cu
                      db: Session = Depends(get_db)) -> dict[str, Any]:
     global last_test
     to = (body.to or "").strip() if body else ""
+    own = not to
     if not to:
         to = (db.execute(text("SELECT email FROM users WHERE user_id = :u"), {"u": user.user_id}).scalar() or "").strip()
         if not to:
@@ -111,7 +113,10 @@ async def test_email(request: Request, body: TestEmailIn | None = None, user: Cu
     reason = await run_in_threadpool(_send_test, to, by)
     result = {"status": "failed" if reason else "sent", "to": to, "reason": reason}
     last_test = {**result, "at": now_iso(), "by": by}
-    log.info("test email to %s: %s%s", to, result["status"], f" ({reason})" if reason else "")
+    # never the address itself in the log (privacy): the admin's own one is "user #<id>", a typed one is masked
+    where = f"user #{user.user_id}" if own else mask_address(to)
+    log.info("test email by user #%s to %s: %s%s", user.user_id, where, result["status"],
+             f" ({reason})" if reason else "")
     write_audit(db, "test_email", user_id=user.user_id, details={"to": to, "status": result["status"],
                                                                 "reason": reason}, request=request)
     db.commit()
