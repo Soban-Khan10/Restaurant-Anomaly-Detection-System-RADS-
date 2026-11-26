@@ -11,6 +11,7 @@ CREATE TABLE users (
   password_hash TEXT NOT NULL,
   full_name     TEXT,
   phone         TEXT,
+  email         TEXT,
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL,
   last_login    TEXT
@@ -118,7 +119,7 @@ CREATE TABLE alerts (
   alert_id    INTEGER PRIMARY KEY,
   incident_id INTEGER NOT NULL REFERENCES incidents(incident_id),
   user_id     INTEGER REFERENCES users(user_id),
-  channel     TEXT NOT NULL CHECK (channel IN ('dashboard','whatsapp','telegram')),
+  channel     TEXT NOT NULL CHECK (channel IN ('dashboard','whatsapp','telegram','email')),
   kind        TEXT NOT NULL CHECK (kind IN ('first','escalation')),
   sent_at     TEXT NOT NULL,
   status      TEXT NOT NULL CHECK (status IN ('sent','failed')),
