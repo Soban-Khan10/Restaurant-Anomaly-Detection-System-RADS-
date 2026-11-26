@@ -29,7 +29,7 @@ from fastapi.responses import StreamingResponse
 
 from shared.contract import (INTERNAL_HEADER, PATH_WORKER_RELOAD, PATH_WORKER_STREAM, STREAM_FPS, WORKER_HOST,
                              WORKER_PORT, ReloadResponse, now_iso)
-from worker.draw import annotate, resize_for_display
+from worker.draw import annotate, draw_banner, resize_for_display
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ class _Slot:
     result: Any = None
     zones: Any = ()
     lines: Any = ()
+    banner: str | None = None  # detection paused: the annotated stream shows only this banner (raw: nothing)
     jpegs: dict[bool, tuple[int, bytes]] = field(default_factory=dict)   # raw? -> (seq it was made from, JPEG)
 
 
@@ -71,12 +72,13 @@ class FrameHub:
 
     # ---------------------------------------------------------------- main loop side (never waits on I/O)
 
-    def publish(self, camera_id: int, image, result, zones, lines: list[str]) -> None:
-        """Store references to the newest frame and its results. Callers must not modify them afterwards."""
+    def publish(self, camera_id: int, image, result, zones, lines: list[str], banner: str | None = None) -> None:
+        """Store references to the newest frame and its results. Callers must not modify them afterwards.
+        With `banner` (detection paused) `result` may be None: the stream shows the plain frame + the banner."""
         with self._lock:
             s = self._slots.get(camera_id)
             if s is not None:
-                s.image, s.result, s.zones, s.lines = image, result, zones, lines
+                s.image, s.result, s.zones, s.lines, s.banner = image, result, zones, lines, banner
                 s.seq += 1
 
     def set_health(self, snapshot: dict[str, Any]) -> None:
@@ -147,9 +149,11 @@ class FrameHub:
             s = self._slots.get(camera_id)
             if s is None or s.image is None:
                 return 0, None
-            seq, image, result, zones, lines = s.seq, s.image, s.result, s.zones, list(s.lines)
-        if raw:   # same size as the annotated stream, no drawings at all
+            seq, image, result, zones, lines, banner = s.seq, s.image, s.result, s.zones, list(s.lines), s.banner
+        if raw:   # same size as the annotated stream, no drawings at all (also during a pause: the zone editor)
             img = resize_for_display(image, STREAM_WIDTH)[0]
+        elif banner is not None:  # detection paused: no boxes or zones, just the banner
+            img = draw_banner(resize_for_display(image, STREAM_WIDTH)[0], banner)
         else:
             img = annotate(image, result, zones, STREAM_WIDTH, lines)
         ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, STREAM_JPEG_QUALITY])
