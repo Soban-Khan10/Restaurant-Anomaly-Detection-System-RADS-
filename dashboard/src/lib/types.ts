@@ -106,11 +106,14 @@ export interface CameraStatusMessage {
   status: CameraStatus;
   fps: number | null;
   ts: string;
+  detection?: "active" | "paused";
+  pause_reason?: PauseReason | null;
 }
 
 export type LiveMessage =
   | { type: "incident.new"; incident: Incident }
   | { type: "incident.closed"; incident_id: number }
+  | { type: "monitoring.changed"; change: string; pause_id: number | null; camera_id: number | null }
   | CameraStatusMessage;
 
 // Incident detail (GET /api/incidents/{id}; PATCH .../review returns the same shape)
@@ -216,4 +219,35 @@ export interface Rule {
   cooldown_s: number;
   severity: Severity;
   zone_ids: number[];
+}
+
+// Pause monitoring (/api/pauses, /api/monitoring/status)
+export type PauseReason = "cleaning" | "closed" | "no_food_prep" | "maintenance" | "other";
+export type PauseState = "active" | "planned" | "ended" | "cancelled";
+
+export interface Pause {
+  pause_id: number;
+  camera_id: number | null; // null = all cameras
+  camera_name: string;
+  reason: PauseReason;
+  reason_label: string;
+  note: string | null;
+  starts_at: string;
+  ends_at: string | null; // null = until resumed
+  created_by: number;
+  created_by_name: string | null;
+  created_at: string;
+  ended_by: number | null;
+  ended_by_name: string | null;
+  ended_at: string | null;
+  state: PauseState;
+}
+
+export interface CameraMonitoring {
+  camera_id: number;
+  camera_name: string;
+  enabled: boolean;
+  state: "active" | "paused" | "planned";
+  pause: Pause | null;
+  next_pause: Pause | null;
 }

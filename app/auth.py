@@ -21,6 +21,7 @@ ROLES_REVIEW = (RoleName.ADMIN, RoleName.MANAGER)
 ROLES_REPORTS = (RoleName.ADMIN, RoleName.MANAGER)
 ROLES_SETTINGS = (RoleName.ADMIN, RoleName.TECHNICAL)
 ROLES_LIVE_VIEW = (RoleName.ADMIN, RoleName.MANAGER, RoleName.TECHNICAL)  # open team question for Manager
+ROLES_PAUSE = (RoleName.ADMIN, RoleName.MANAGER, RoleName.TECHNICAL)  # pause / resume monitoring
 
 
 def hash_password(password: str) -> str:

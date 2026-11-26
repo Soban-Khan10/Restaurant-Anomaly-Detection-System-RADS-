@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from app import alerts
+from app import alerts, pauses
 from app.deps import get_db, require_internal
 from app.routes.incidents import IncidentOut, load_incident
 from app.ws import cameras, hub
@@ -27,19 +27,25 @@ class Ok(BaseModel):
     ok: bool = True
 
 
-def _open_incident(db: Session, incident_id: int) -> tuple[dict, bool]:
+def _open_incident(db: Session, incident_id: int) -> tuple[dict, bool, dict | None]:
     row = IncidentOut(**load_incident(db, incident_id)).model_dump()  # 404 if missing
     created = alerts.record_dashboard_alert(db, incident_id)
-    return row, created
+    paused = pauses.incident_in_pause(db, row["camera_id"], row["start_time"])
+    return row, created, paused
 
 
 @router.post(PATH_INCIDENT_NEW, response_model=Ok)
 async def incident_new(body: IncidentRef, background: BackgroundTasks, db: Session = Depends(get_db)) -> Ok:
-    row, created = await run_in_threadpool(_open_incident, db, body.incident_id)
+    row, created, paused = await run_in_threadpool(_open_incident, db, body.incident_id)
     n = await hub.broadcast(WsIncidentNew(incident=row).model_dump(mode="json"))
     log.info("incident %s opened (%s %s), sent to %d dashboard(s)", body.incident_id, row["hazard_id"],
              row["camera_name"], n)
-    if created:  # a retried message 2 does not text anyone twice
+    if created and paused:
+        # The worker detects nothing while paused; this one slipped through at the start of a pause. Keep it on
+        # the dashboard, but do not text anyone about it.
+        log.warning("incident %s on camera %s arrived during pause %s (%s): kept, no WhatsApp/Telegram",
+                    body.incident_id, row["camera_id"], paused["pause_id"], paused["reason"])
+    elif created:  # a retried message 2 does not text anyone twice
         # After the response, so a slow WhatsApp/Telegram API never delays the worker. Own session for the task.
         background.add_task(alerts.send_first_alerts, sessionmaker(bind=db.get_bind()), body.incident_id)
     return Ok()

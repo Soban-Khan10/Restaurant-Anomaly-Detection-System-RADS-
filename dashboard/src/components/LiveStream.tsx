@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { cameraStreamUrl } from "../lib/api";
 import { useLive } from "../live/LiveContext";
-import { CameraIcon } from "./Icons";
+import { useMonitoring } from "../live/MonitoringContext";
+import { CameraIcon, PauseIcon } from "./Icons";
 
 type Problem = "offline" | "off" | "forbidden" | "error";
 
@@ -35,6 +36,7 @@ async function probe(url: string): Promise<Problem> {
 export function LiveStream({ cameraId, name, aspect = 16 / 9 }: { cameraId: number; name: string; aspect?: number }) {
   const { token } = useAuth();
   const { cameras } = useLive();
+  const { byCamera } = useMonitoring();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [checking, setChecking] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -51,6 +53,7 @@ export function LiveStream({ cameraId, name, aspect = 16 / 9 }: { cameraId: numb
   }
 
   const shown = problem ?? (heartbeat === "offline" ? "offline" : null);
+  const detectionPaused = byCamera(cameraId)?.state === "paused" || cameras[cameraId]?.detection === "paused";
   return (
     <div className="relative w-full overflow-hidden bg-slate-900" style={{ aspectRatio: String(aspect) }}>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
@@ -60,6 +63,12 @@ export function LiveStream({ cameraId, name, aspect = 16 / 9 }: { cameraId: numb
       {url && !problem && !checking && (
         <img key={attempt} src={url} alt={`Live view of ${name}`} onError={failed}
           className="absolute inset-0 h-full w-full object-contain" />
+      )}
+      {detectionPaused && !shown && (
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-2.5 py-1
+          text-xs font-semibold text-white shadow" role="status">
+          <PauseIcon className="h-4 w-4" /> Detection paused
+        </span>
       )}
       {shown && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 px-6

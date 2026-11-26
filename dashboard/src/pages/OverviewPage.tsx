@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CameraIcon } from "../components/Icons";
+import { CameraIcon, PauseIcon } from "../components/Icons";
 import { LiveStream } from "../components/LiveStream";
+import { EndPauseDialog, PauseDialog } from "../components/PauseDialog";
 import { Card, CameraStatusBadge, EmptyState, ErrorState, SeverityBadge, Spinner, StatusBadge } from "../components/ui";
 import { formatTime, timeAgo } from "../lib/format";
+import { pausedLine, plannedLine } from "../lib/pauseForm";
 import type { Alert, Camera, IncidentSummary } from "../lib/types";
 import { useApi } from "../lib/useApi";
 import { useIncidentEvents, useLive } from "../live/LiveContext";
+import { useMonitoring } from "../live/MonitoringContext";
 
 const REFRESH_MS = 60_000; // escalations are not sent over the WebSocket, so look again every minute
 
@@ -53,15 +56,20 @@ function TodayStats({ summary }: { summary: IncidentSummary | null }) {
 
 // ---------------------------------------------------------------- cameras
 
-function CameraTile({ camera }: { camera: Camera }) {
+function CameraTile({ camera, cameras }: { camera: Camera; cameras: Camera[] }) {
   const { cameras: live } = useLive();
+  const { byCamera } = useMonitoring();
   const [showLive, setShowLive] = useState(false);
+  const [dialog, setDialog] = useState<"pause" | "end" | null>(null);
   const beat = live[camera.camera_id];
   const status = beat?.status ?? camera.status;
   const fps = beat ? beat.fps : camera.fps;
+  const m = byCamera(camera.camera_id);
+  const paused = m?.state === "paused" && m.pause ? m.pause : null;
+  const planned = !paused && m?.state === "planned" && m.next_pause ? m.next_pause : null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className={`overflow-hidden rounded-xl border bg-white shadow-sm ${paused ? "border-amber-300" : "border-slate-200"}`}>
       {showLive ? (
         <LiveStream cameraId={camera.camera_id} name={camera.name} />
       ) : (
@@ -90,7 +98,60 @@ function CameraTile({ camera }: { camera: Camera }) {
           </button>
         </div>
       </div>
+      {paused ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5">
+          <PauseIcon className="h-5 w-5 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">Detection paused – {pausedLine(paused)}</p>
+            <p className="text-xs text-amber-800">
+              {paused.camera_id === null ? "All cameras · " : ""}Paused by {paused.created_by_name ?? "someone"}
+              {paused.note ? ` · ${paused.note}` : ""}
+            </p>
+          </div>
+          <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => setDialog("end")}>
+            Resume now
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2">
+          <p className="min-w-0 text-xs text-slate-500">
+            {planned ? <>Pause planned: <span className="font-medium text-slate-700">{plannedLine(planned)}</span></>
+              : "Detection running"}
+          </p>
+          {planned ? (
+            <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => setDialog("end")}>
+              Cancel pause
+            </button>
+          ) : (
+            <button type="button" className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:underline"
+              onClick={() => setDialog("pause")}>
+              <PauseIcon className="h-4 w-4" /> Pause monitoring
+            </button>
+          )}
+        </div>
+      )}
+      {dialog === "pause" && (
+        <PauseDialog cameras={cameras} cameraId={camera.camera_id} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "end" && (paused || planned) && (
+        <EndPauseDialog pause={(paused ?? planned)!} cameraName={camera.name} onClose={() => setDialog(null)} />
+      )}
     </div>
+  );
+}
+
+function PauseAllButton({ cameras }: { cameras: Camera[] }) {
+  const { status } = useMonitoring();
+  const [open, setOpen] = useState(false);
+  const allPaused = status.length > 0 && status.every((s) => s.state === "paused");
+  if (allPaused || cameras.length === 0) return null;
+  return (
+    <>
+      <button type="button" className="btn-secondary !py-1 text-xs" onClick={() => setOpen(true)}>
+        <PauseIcon className="h-4 w-4" /> Pause all cameras
+      </button>
+      {open && <PauseDialog cameras={cameras} cameraId={null} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -176,13 +237,16 @@ export default function OverviewPage() {
       <TodayStats summary={summary.data} />
 
       <section aria-labelledby="cameras-heading">
-        <h2 id="cameras-heading" className="mb-3 text-sm font-semibold text-slate-800">Cameras</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id="cameras-heading" className="text-sm font-semibold text-slate-800">Cameras</h2>
+          {cameras.data && <PauseAllButton cameras={cameras.data} />}
+        </div>
         {cameras.error ? <Card><ErrorState message={cameras.error} onRetry={cameras.reload} /></Card>
           : !cameras.data ? <Card><Spinner /></Card>
           : cameras.data.length === 0 ? <Card><EmptyState title="No cameras set up yet" /></Card>
           : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {cameras.data.map((c) => <CameraTile key={c.camera_id} camera={c} />)}
+              {cameras.data.map((c) => <CameraTile key={c.camera_id} camera={c} cameras={cameras.data!} />)}
             </div>
           )}
       </section>
