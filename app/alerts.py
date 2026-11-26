@@ -10,10 +10,15 @@
 * Each external send gets its own `alerts` row: `sent`, or `failed` with the error. A failed send never raises.
 
 Channels (configured in .env; nothing configured -> dashboard only):
+  Email     SMTP_HOST + SMTP_USER + SMTP_PASSWORD + SMTP_FROM      -> each recipient's users.email (app.email_alerts)
   WhatsApp  WHATSAPP_TOKEN + WHATSAPP_PHONE_ID (Meta Cloud API) -> each recipient's users.phone
   Telegram  TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID               -> that chat (e.g. a staff group); a bot cannot
             message a phone number, so recipients are chat ids, not users. TELEGRAM_CHAT_ID may hold several ids
-            separated by commas.
+            separated by commas. (Supported, but Telegram is blocked in Pakistan, so it is left off.)
+
+Never twice: an incident gets at most one first and one escalation message per channel and recipient, whichever
+path sends it (message 2, the catch-up, a restart). No external messages for incidents that started while
+monitoring was paused on their camera.
 """
 from __future__ import annotations
 
@@ -28,6 +33,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.email_alerts import NO_RECIPIENTS, EmailSender, email_config
 from shared.config import Settings, get_settings
 from shared.contract import TZ, AlertChannel, AlertKind, AlertStatus, IncidentStatus, RoleName, now_iso
 
@@ -35,7 +41,7 @@ log = logging.getLogger("rads.app.alerts")
 
 ESCALATE_AFTER = timedelta(minutes=10)
 CATCH_UP_GRACE = timedelta(seconds=60)        # newer incidents are still being reported by the worker (message 2)
-CATCH_UP_TEXT_WITHIN = timedelta(minutes=60)  # missed incidents older than this get the dashboard row only
+CATCH_UP_TEXT_WITHIN = timedelta(minutes=60)  # older incidents get the dashboard row only (catch-up and escalation)
 HTTP_TIMEOUT_S = 10.0
 WHATSAPP_API = "https://graph.facebook.com/v21.0"
 TELEGRAM_API = "https://api.telegram.org"
@@ -54,7 +60,8 @@ class Sender(Protocol):
     channel: AlertChannel
 
     def recipients(self, users: list[dict[str, Any]]) -> list[Recipient]: ...
-    def send(self, address: str, message: str) -> None: ...  # raises on failure
+    def send(self, address: str, message: Any) -> None: ...  # raises on failure
+    # optional: compose(incident, kind) -> the message for send(); otherwise a short text (format_message)
 
 
 class SendError(Exception):
@@ -114,6 +121,9 @@ def configured_senders(settings: Settings | None = None, telegram_chat_id: str |
     s = settings or get_settings()
     chat = telegram_chat_id if telegram_chat_id is not None else os.environ.get("TELEGRAM_CHAT_ID", "")
     senders: list[Sender] = []
+    email = email_config()
+    if email.enabled:
+        senders.append(EmailSender(email))
     if s.whatsapp_token and s.whatsapp_phone_id:
         senders.append(WhatsAppSender(s.whatsapp_token, s.whatsapp_phone_id))
     if s.telegram_bot_token:
@@ -129,8 +139,11 @@ def configured_senders(settings: Settings | None = None, telegram_chat_id: str |
 
 def _incident_summary(db: Session, incident_id: int) -> dict[str, Any] | None:
     row = db.execute(text(
-        "SELECT i.incident_id, i.hazard_id, h.name AS hazard_name, c.name AS camera_name, z.name AS zone_name, "
-        "i.start_time, i.severity, i.status FROM incidents i JOIN hazards h ON h.hazard_id = i.hazard_id "
+        "SELECT i.incident_id, i.hazard_id, h.name AS hazard_name, h.tied_to, c.name AS camera_name, "
+        "z.name AS zone_name, i.start_time, i.severity, i.status, i.track_id, i.conf_avg, i.conf_max, "
+        "(SELECT e.file_path FROM evidence e WHERE e.incident_id = i.incident_id AND e.deleted_at IS NULL "
+        " ORDER BY e.evidence_id LIMIT 1) AS evidence_path "
+        "FROM incidents i JOIN hazards h ON h.hazard_id = i.hazard_id "
         "JOIN cameras c ON c.camera_id = i.camera_id JOIN zones z ON z.zone_id = i.zone_id "
         "WHERE i.incident_id = :id"), {"id": incident_id}).mappings().first()
     return dict(row) if row else None
@@ -140,7 +153,7 @@ def _users_with_role(db: Session, roles: Iterable[RoleName]) -> list[dict[str, A
     names = [r.value for r in roles]
     params = {f"r{i}": n for i, n in enumerate(names)}
     return [dict(r) for r in db.execute(text(
-        "SELECT u.user_id, u.username, u.phone FROM users u JOIN roles r ON r.role_id = u.role_id "
+        "SELECT u.user_id, u.username, u.phone, u.email FROM users u JOIN roles r ON r.role_id = u.role_id "
         f"WHERE u.active = 1 AND r.name IN ({', '.join(':' + k for k in params)}) ORDER BY u.user_id"),
         params).mappings()]
 
@@ -151,6 +164,18 @@ def _insert_alert(db: Session, incident_id: int, channel: AlertChannel, kind: Al
                     "VALUES (:i, :u, :c, :k, :t, :s, :e)"),
                {"i": incident_id, "u": user_id, "c": channel.value, "k": kind.value, "t": now_iso(),
                 "s": status.value, "e": error[:ERROR_MAX] if error else None})
+
+
+def _already_sent(db: Session, incident_id: int, channel: AlertChannel, kind: AlertKind, user_id: int) -> bool:
+    return db.execute(text("SELECT 1 FROM alerts WHERE incident_id = :i AND channel = :c AND kind = :k "
+                           "AND user_id = :u AND status = 'sent'"),
+                      {"i": incident_id, "c": channel.value, "k": kind.value, "u": user_id}).first() is not None
+
+
+def _recorded(db: Session, incident_id: int, channel: AlertChannel, kind: AlertKind, error: str) -> bool:
+    return db.execute(text("SELECT 1 FROM alerts WHERE incident_id = :i AND channel = :c AND kind = :k "
+                           "AND user_id IS NULL AND error = :e"),
+                      {"i": incident_id, "c": channel.value, "k": kind.value, "e": error}).first() is not None
 
 
 def format_message(inc: dict[str, Any], kind: AlertKind) -> str:
@@ -182,15 +207,29 @@ def send_external(Session_: sessionmaker[Session], incident_id: int, kind: Alert
         senders = configured_senders() if senders is None else senders
         if not senders:
             return 0
+        if _during_pause(Session_, incident_id, also_now=False):
+            log.warning("incident %s started during a monitoring pause: no %s messages", incident_id, kind.value)
+            return 0
         with Session_() as db:
             inc = _incident_summary(db, incident_id)
             if inc is None:
                 return 0
             users = _users_with_role(db, roles)
-            message = format_message(inc, kind)
             sent = 0
             for sender in senders:
-                for rcpt in sender.recipients(users):
+                rcpts = sender.recipients(users)
+                if not rcpts and sender.channel == AlertChannel.EMAIL:
+                    if not _recorded(db, incident_id, sender.channel, kind, NO_RECIPIENTS):
+                        log.warning("email %s alert for incident %s: %s", kind.value, incident_id, NO_RECIPIENTS)
+                        _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.FAILED, None, NO_RECIPIENTS)
+                        db.commit()
+                    continue
+                compose = getattr(sender, "compose", None)
+                message = compose(inc, kind) if compose else format_message(inc, kind)
+                for rcpt in rcpts:
+                    if rcpt.user_id is not None and _already_sent(db, incident_id, sender.channel, kind,
+                                                                  rcpt.user_id):
+                        continue  # never the same alert twice to the same person
                     try:
                         sender.send(rcpt.address, message)
                     except Exception as e:  # noqa: BLE001 – a failed send never breaks anything else
@@ -275,16 +314,21 @@ def run_minute_jobs(Session_: sessionmaker[Session], senders: list[Sender] | Non
 
 def run_escalation(Session_: sessionmaker[Session], senders: list[Sender] | None = None,
                    now: datetime | None = None) -> list[int]:
-    """Escalate incidents still `New` ESCALATE_AFTER after start. Returns the escalated incident ids."""
+    """Escalate incidents still `New` ESCALATE_AFTER after start. Returns the escalated incident ids.
+
+    Every escalated incident gets its dashboard escalation row. Email/WhatsApp/Telegram go out only for incidents that
+    started within CATCH_UP_TEXT_WITHIN (60 min), the same rule as the catch-up: after the app server or the computer
+    was off, old incidents must not flood the Admins' inboxes."""
     now = (now or datetime.now(TZ)).astimezone(TZ)
     cutoff = (now - ESCALATE_AFTER).isoformat(timespec="seconds")
     escalated: list[int] = []
     with Session_() as db:
-        ids = [r[0] for r in db.execute(
-            text("SELECT incident_id FROM incidents WHERE status = :new AND escalated_at IS NULL "
+        rows = db.execute(
+            text("SELECT incident_id, start_time FROM incidents WHERE status = :new AND escalated_at IS NULL "
                  "AND start_time <= :cutoff ORDER BY incident_id"),
-            {"new": IncidentStatus.NEW.value, "cutoff": cutoff})]
-        for iid in ids:
+            {"new": IncidentStatus.NEW.value, "cutoff": cutoff}).all()
+        starts = {iid: start for iid, start in rows}
+        for iid in starts:
             # Conditional update: never escalate twice, and skip if it was reviewed in the meantime.
             res = db.execute(text("UPDATE incidents SET escalated_at = :t WHERE incident_id = :i "
                                   "AND escalated_at IS NULL AND status = :new"),
@@ -298,6 +342,11 @@ def run_escalation(Session_: sessionmaker[Session], senders: list[Sender] | None
                     int(ESCALATE_AFTER.total_seconds() // 60))
         if _during_pause(Session_, iid, also_now=False):
             log.warning("incident %s happened during a monitoring pause: escalation shown on the dashboard only", iid)
+            continue
+        if not _started_within(starts[iid], now, CATCH_UP_TEXT_WITHIN):
+            log.warning("incident %s started more than %d min ago (the app server was off or asleep): escalation "
+                        "shown on the dashboard only, no email/WhatsApp/Telegram", iid,
+                        int(CATCH_UP_TEXT_WITHIN.total_seconds() // 60))
             continue
         send_external(Session_, iid, AlertKind.ESCALATION, (RoleName.ADMIN,), senders)
     return escalated

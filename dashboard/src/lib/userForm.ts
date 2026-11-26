@@ -8,6 +8,7 @@ export interface UserFormValues {
   full_name: string;
   role: Role;
   phone: string;
+  email: string;
   password: string;
   active: boolean;
 }
@@ -19,12 +20,23 @@ export const PASSWORD_MIN = 8;
 const PASSWORD_MAX_BYTES = 72; // bcrypt limit on the server
 
 export function emptyForm(): UserFormValues {
-  return { username: "", full_name: "", role: "Manager", phone: "", password: "", active: true };
+  return { username: "", full_name: "", role: "Manager", phone: "", email: "", password: "", active: true };
 }
 
 export function formFromUser(u: User): UserFormValues {
-  return { username: u.username, full_name: u.full_name ?? "", role: u.role, phone: u.phone ?? "", password: "",
+  return { username: u.username, full_name: u.full_name ?? "", role: u.role, phone: u.phone ?? "", email: u.email ?? "",
+    password: "",
     active: u.active };
+}
+
+/** Same rule as the server (app/email_alerts.py EMAIL_RE): one @, a dot in the domain, no spaces or quotes. */
+export function isEmail(value: string): boolean {
+  return value.length <= 254 && /^[^@\s<>"',;]+@[^@\s<>"',;]+\.[^@\s<>"',;]{2,}$/.test(value);
+}
+
+/** Managers get the first email, Admins the escalation; Technical users get none. */
+export function getsEmailAlerts(u: Pick<User, "role" | "email" | "active">): boolean {
+  return u.active && (u.role === "Manager" || u.role === "Admin") && !!u.email && isEmail(u.email.trim());
 }
 
 export function validateUserForm(v: UserFormValues, mode: Mode): UserFormErrors {
@@ -49,6 +61,9 @@ export function validateUserForm(v: UserFormValues, mode: Mode): UserFormErrors 
     }
   }
 
+  const email = v.email.trim();
+  if (email && !isEmail(email)) errors.email = "Enter a valid email address, for example name@example.com.";
+
   if (mode === "create" && !v.password) errors.password = "Enter a password.";
   else if (v.password && v.password.length < PASSWORD_MIN) {
     errors.password = `Use at least ${PASSWORD_MIN} characters.`;
@@ -62,13 +77,15 @@ export function validateUserForm(v: UserFormValues, mode: Mode): UserFormErrors 
 export function userPayload(v: UserFormValues, mode: Mode, original?: User): Record<string, unknown> {
   const fullName = v.full_name.trim() || null;
   const phone = v.phone.trim() || null;
+  const email = v.email.trim() || null;
   if (mode === "create") {
     return { username: v.username.trim(), password: v.password, role: v.role, full_name: fullName, phone,
-      active: v.active };
+      email, active: v.active };
   }
   const body: Record<string, unknown> = {};
   if (fullName !== (original?.full_name ?? null)) body.full_name = fullName;
   if (phone !== (original?.phone ?? null)) body.phone = phone;
+  if (email !== (original?.email ?? null)) body.email = email;
   if (v.role !== original?.role) body.role = v.role;
   if (v.active !== original?.active) body.active = v.active;
   if (v.password) body.password = v.password;
