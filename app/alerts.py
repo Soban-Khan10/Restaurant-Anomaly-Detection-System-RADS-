@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.email_alerts import NO_RECIPIENTS, EmailSender, email_config
+from app.log_redaction import mask_address
 from shared.config import Settings, get_settings
 from shared.contract import TZ, AlertChannel, AlertKind, AlertStatus, IncidentStatus, RoleName, now_iso
 
@@ -233,9 +234,11 @@ def send_external(Session_: sessionmaker[Session], incident_id: int, kind: Alert
                     try:
                         sender.send(rcpt.address, message)
                     except Exception as e:  # noqa: BLE001 – a failed send never breaks anything else
-                        log.warning("%s alert for incident %s failed: %s", sender.channel.value, incident_id, e)
-                        _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.FAILED, rcpt.user_id,
-                                      str(e) or type(e).__name__)
+                        error = (str(e) or type(e).__name__).replace(rcpt.address, mask_address(rcpt.address))
+                        who = f"user #{rcpt.user_id}" if rcpt.user_id is not None else "the group chat"
+                        log.warning("%s alert for incident %s to %s failed: %s", sender.channel.value, incident_id,
+                                    who, error)
+                        _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.FAILED, rcpt.user_id, error)
                     else:
                         sent += 1
                         _insert_alert(db, incident_id, sender.channel, kind, AlertStatus.SENT, rcpt.user_id)

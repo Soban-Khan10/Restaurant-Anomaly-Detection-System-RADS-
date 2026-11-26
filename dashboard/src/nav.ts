@@ -35,3 +35,9 @@ export function navFor(role: Role | undefined): NavItem[] {
 export function rolesFor(path: string): Role[] {
   return NAV.find((n) => n.to === path)?.roles ?? EVERYONE;
 }
+
+/** "You don't have access to reports": what a page says when a role without it opens its address directly. */
+export function noAccessTitle(path: string): string {
+  const item = NAV.find((n) => n.to === path);
+  return item ? `You don't have access to ${item.label.toLowerCase()}` : "You don't have access to this page";
+}

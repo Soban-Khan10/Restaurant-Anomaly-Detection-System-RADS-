@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import write_audit
 from app.auth import ROLES_REPORTS
-from app.deps import CurrentUser, get_current_user, get_db, get_reports_dir, require_role
+from app.deps import CurrentUser, get_db, get_reports_dir, require_role
 from app.reports import collect, write_report
 from shared.contract import TZ
 
@@ -73,8 +73,13 @@ def _safe_path(reports_dir: Path, rel: str) -> Path | None:
     return p if p.is_relative_to(base) and p.is_file() else None
 
 
+# Every report route: Admin and Manager only (403 for Technical, 401 without a login). Reports hold incident data
+# for whole periods, so listing and downloading them is as restricted as making them.
+reports_role = require_role(*ROLES_REPORTS)
+
+
 @router.post("", response_model=ReportOut, status_code=http.HTTP_201_CREATED)
-def create_report(body: ReportIn, request: Request, user: CurrentUser = Depends(require_role(*ROLES_REPORTS)),
+def create_report(body: ReportIn, request: Request, user: CurrentUser = Depends(reports_role),
                   db: Session = Depends(get_db), reports_dir: Path = Depends(get_reports_dir)) -> ReportOut:
     now = datetime.now(TZ)
     by = f"{user.full_name} ({user.username})" if user.full_name else user.username
@@ -107,7 +112,7 @@ def create_report(body: ReportIn, request: Request, user: CurrentUser = Depends(
 
 
 @router.get("", response_model=list[ReportOut])
-def list_reports(_: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db),
+def list_reports(_: CurrentUser = Depends(reports_role), db: Session = Depends(get_db),
                  reports_dir: Path = Depends(get_reports_dir)) -> list[ReportOut]:
     rows = db.execute(text(_SELECT + " ORDER BY r.created_at DESC, r.report_id DESC")).mappings().all()
     return [_out(dict(r), reports_dir) for r in rows]
@@ -115,7 +120,7 @@ def list_reports(_: CurrentUser = Depends(get_current_user), db: Session = Depen
 
 @router.get("/{report_id}/download", response_class=FileResponse,
             responses={200: {"content": {MEDIA["pdf"]: {}, MEDIA["xlsx"]: {}}}, 404: {}})
-def download_report(report_id: int, request: Request, user: CurrentUser = Depends(get_current_user),
+def download_report(report_id: int, request: Request, user: CurrentUser = Depends(reports_role),
                     db: Session = Depends(get_db), reports_dir: Path = Depends(get_reports_dir)) -> FileResponse:
     row = db.execute(text("SELECT file_path, format FROM reports WHERE report_id = :id"),
                      {"id": report_id}).mappings().first()
