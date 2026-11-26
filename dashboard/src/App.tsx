@@ -4,11 +4,13 @@ import { useAuth } from "./auth/AuthContext";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 import { LiveProvider } from "./live/LiveContext";
+import { MonitoringProvider } from "./live/MonitoringContext";
 import { rolesFor } from "./nav";
 import IncidentDetailPage from "./pages/IncidentDetailPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import LoginPage from "./pages/LoginPage";
 import OverviewPage from "./pages/OverviewPage";
+import PausesPage from "./pages/PausesPage";
 import CameraAreasPage from "./pages/CameraAreasPage";
 import CamerasPage from "./pages/CamerasPage";
 import { NoAccess, NotFound } from "./pages/Placeholders";
@@ -36,10 +38,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route element={<RequireAuth><LiveProvider><Layout /></LiveProvider></RequireAuth>}>
+      <Route element={<RequireAuth><LiveProvider><MonitoringProvider><Layout /></MonitoringProvider></LiveProvider></RequireAuth>}>
         <Route index element={<OverviewPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
         <Route path="incidents/:id" element={<IncidentDetailPage />} />
+        <Route path="pauses" element={<PausesPage />} />
         <Route path="cameras" element={<RoleGate path="/cameras"><CamerasPage /></RoleGate>} />
         <Route path="cameras/:id" element={<RoleGate path="/cameras"><CameraAreasPage /></RoleGate>} />
         <Route path="rules" element={<RulesPage />} />

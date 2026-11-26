@@ -52,7 +52,8 @@ from shared.config import get_settings  # noqa: E402
 from shared.db import get_engine  # noqa: E402
 from shared.contract import (HEARTBEAT_INTERVAL_S, INTERNAL_HEADER, NOTIFY_RETRIES, PATH_HEARTBEAT,  # noqa: E402
                              PATH_INCIDENT_CLOSED, PATH_INCIDENT_NEW, PATH_WORKER_RELOAD, PATH_WORKER_STREAM,
-                             STREAM_FPS, TZ, CameraStatus, Heartbeat, IncidentRef, ReloadResponse, TiedTo, now_iso)
+                             STREAM_FPS, TZ, CameraStatus, DetectionState, Heartbeat, IncidentRef, PauseReason,
+                             ReloadResponse, TiedTo, active_pause, now_iso)
 
 MODEL_VERSION = "fake_incidents"
 log = logging.getLogger("fake_incidents")
@@ -129,6 +130,12 @@ class FakeWorker:
         self.offline_camera = offline_camera
         self.clock = clock
         self.open: dict[int, tuple[float, list[float]]] = {}  # incident_id -> (close at, confidences)
+        self.camera_of: dict[int, int] = {}                    # open incident_id -> camera_id
+
+    def paused(self, camera_id: int) -> dict[str, Any] | None:
+        """The pause in force on this camera now (shared rule, the same the real worker uses)."""
+        with self.Session() as s:
+            return active_pause(s, camera_id)
 
     # ---- helpers
     def _notify(self, path: str, incident_id: int) -> None:
@@ -153,13 +160,18 @@ class FakeWorker:
         return [{**r, "zone_ids": [int(z) for z in r["zone_ids"].split(",")]} for r in rows]
 
     # ---- message 2
-    def new_incident(self, rule: dict[str, Any] | None = None, start: datetime | None = None) -> int:
+    def new_incident(self, rule: dict[str, Any] | None = None, start: datetime | None = None) -> int | None:
         """Open a new incident now (message 2 follows). With `start` (backfill), only write the rows."""
         backfill = start is not None
         if rule is None:
             rules = self.rules()
             if not rules:
                 raise RuntimeError("No enabled rules with zones; run scripts/seed.py")
+            if not backfill:  # like the real worker: nothing is detected on a paused camera
+                rules = [r for r in rules if not self.paused(r["camera_id"])]
+                if not rules:
+                    log.info("PAUSED all cameras with rules are paused: no fake incident")
+                    return None
             rule = self.rng.choice(rules)
         rng = self.rng
         zone_id = rng.choice(rule["zone_ids"])
@@ -195,6 +207,7 @@ class FakeWorker:
         if backfill:
             return incident_id
         self.open[incident_id] = (self.clock() + rng.uniform(self.min_duration, self.max_duration), [conf])
+        self.camera_of[incident_id] = rule["camera_id"]
         log.info("NEW    incident %d  %s %s  cam%d  zone %d", incident_id, rule["hazard_id"],
                  rule["hazard_name"], rule["camera_id"], zone_id)
         self._notify(PATH_INCIDENT_NEW, incident_id)
@@ -242,6 +255,7 @@ class FakeWorker:
     # ---- message 5
     def close_incident(self, incident_id: int) -> None:
         _, confs = self.open.pop(incident_id)
+        self.camera_of.pop(incident_id, None)
         confs += [round(self.rng.uniform(0.45, 0.95), 3) for _ in range(self.rng.randint(3, 12))]
         with self.Session() as s:
             s.execute(text("UPDATE incidents SET end_time = :e, conf_avg = :a, conf_max = :m "
@@ -253,7 +267,9 @@ class FakeWorker:
 
     def close_due(self) -> None:
         now = self.clock()
-        for incident_id in [i for i, (due, _) in self.open.items() if due <= now]:
+        paused = {cam for cam in set(self.camera_of.values()) if self.paused(cam)}
+        for incident_id in [i for i, (due, _) in self.open.items()
+                            if due <= now or self.camera_of.get(i) in paused]:  # a pause ends what is open
             self.close_incident(incident_id)
 
     def close_all(self) -> None:
@@ -268,8 +284,11 @@ class FakeWorker:
             for cam in cams:
                 if cam == self.offline_camera:
                     continue  # simulate a dead camera: no heartbeat, camera_health goes stale
+                pause = active_pause(s, cam)
                 hb = Heartbeat(camera_id=cam, status=CameraStatus.ONLINE,
-                               fps=round(self.rng.uniform(4.8, 5.0), 1), ts=now_iso())
+                               fps=round(self.rng.uniform(4.8, 5.0), 1), ts=now_iso(),
+                               detection=DetectionState.PAUSED if pause else DetectionState.ACTIVE,
+                               pause_reason=pause["reason"] if pause else None)
                 s.execute(text("INSERT INTO camera_health (camera_id, status, fps, last_seen) VALUES (:c, :s, :f, :t) "
                                "ON CONFLICT(camera_id) DO UPDATE SET status = excluded.status, fps = excluded.fps, "
                                "last_seen = excluded.last_seen"),
@@ -348,9 +367,10 @@ class VideoSource:
 
 
 def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
-                 video: VideoSource | None = None, raw: bool = False) -> bytes:
+                 video: VideoSource | None = None, raw: bool = False, paused: str | None = None) -> bytes:
     """One JPEG: test pattern (or video frame) at the camera's size, zones drawn, scaled to STREAM_WIDTH.
-    raw: the picture only – no zones and no text, like the real worker's ?raw=1 (the area editor's snapshot)."""
+    raw: the picture only – no zones and no text, like the real worker's ?raw=1 (the area editor's snapshot).
+    paused: the reason label while detection is paused – the live view is the clean picture with a banner."""
     w, h = camera["frame_width"] or 1920, camera["frame_height"] or 1080
     if video is not None:
         img = video.frame().resize((w, h))
@@ -365,6 +385,12 @@ def render_frame(camera: dict[str, Any], zones: list[dict[str, Any]], n: int,
         d.rectangle((x, h // 8, x + w // 100, h), fill=(80, 90, 110))
     if raw:
         return _jpeg(img.resize((RAW_STREAM_WIDTH, round(h * RAW_STREAM_WIDTH / w))))
+    if paused is not None:
+        d = ImageDraw.Draw(img)
+        d.rectangle((0, h - h // 6, w, h), fill=(180, 83, 9))
+        d.text((w // 40, h - h // 6 + h // 40), f"DETECTION PAUSED - {paused}", fill=(255, 255, 255),
+               font=_font(max(h // 16, 14)))
+        return _jpeg(img.resize((STREAM_WIDTH, round(h * STREAM_WIDTH / w))))
     d = ImageDraw.Draw(img)
     big, small = _font(max(h // 22, 12)), _font(max(h // 36, 10))
     for z in zones:
@@ -423,7 +449,9 @@ def create_worker_app(Session_: sessionmaker[Session], token: str, offline_camer
                 with Session_() as s:  # zones re-read every frame: edits show up at once
                     zones = [dict(z) for z in s.execute(
                         text("SELECT * FROM zones WHERE camera_id = :c ORDER BY zone_id"), {"c": camera_id}).mappings()]
-                jpeg = await asyncio.to_thread(render_frame, cam, zones, n, video, raw)
+                    pause = None if raw else active_pause(s, camera_id)
+                label = PauseReason(pause["reason"]).label if pause else None
+                jpeg = await asyncio.to_thread(render_frame, cam, zones, n, video, raw, label)
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode()
                        + b"\r\n\r\n" + jpeg + b"\r\n")
                 n += 1
@@ -464,8 +492,8 @@ def run(worker: FakeWorker, interval: float, count: int | None, tick: float = 0.
                 worker.heartbeats()
                 next_hb = now + HEARTBEAT_INTERVAL_S
             if make_incidents and (count is None or created < count) and now >= next_new:
-                worker.new_incident()
-                created += 1
+                if worker.new_incident() is not None:
+                    created += 1
                 next_new = now + interval
             worker.close_due()
             if count is not None and created >= count and not worker.open:

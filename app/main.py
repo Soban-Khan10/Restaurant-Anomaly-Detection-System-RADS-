@@ -11,9 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
-from app import alerts, log_redaction, retention, ws
+from app import alerts, log_redaction, pauses, retention, ws
 from app.routes import (admin, auth, cameras, evidence, incidents, internal, lookups, reports, rules, users,
                         zones)
+from app.routes import pauses as pause_routes
 from shared.config import Settings, get_settings
 from shared.contract import TZ
 from shared.db import get_engine
@@ -32,6 +33,9 @@ def add_jobs(scheduler: BackgroundScheduler, Session_: sessionmaker, s: Settings
     Daily at 03:00 Pakistan time: evidence retention + database backup."""
     scheduler.add_job(alerts.run_minute_jobs, "interval", minutes=1, args=[Session_],
                       id="escalation", max_instances=1, coalesce=True, next_run_time=datetime.now(TZ))
+    # Pause monitoring: a planned pause started or a timed one ran out -> worker reload + monitoring.changed.
+    scheduler.add_job(pauses.run_transition_job, "interval", minutes=1, args=[Session_],
+                      id="pause_transitions", max_instances=1, coalesce=True, next_run_time=datetime.now(TZ))
     scheduler.add_job(retention.run_daily_maintenance, "cron", hour=3, minute=0,
                       args=[Session_, s.evidence_dir, s.db_path, s.data_dir / "backups"],
                       id="maintenance", max_instances=1, coalesce=True,
@@ -57,6 +61,7 @@ async def lifespan(_: FastAPI):
     log.info("alert channels: dashboard%s", "".join(f", {c}" for c in channels))
 
     # Scheduled jobs (APScheduler thread) + offline-camera watcher (asyncio task).
+    pauses.set_event_loop(asyncio.get_running_loop())  # the job thread sends WebSocket events through it
     scheduler = BackgroundScheduler(timezone="Asia/Karachi")
     add_jobs(scheduler, sessionmaker(bind=get_engine()), s)
     scheduler.start()
@@ -70,6 +75,7 @@ async def lifespan(_: FastAPI):
         with suppress(asyncio.CancelledError):
             await watcher
         scheduler.shutdown(wait=False)
+        pauses.set_event_loop(None)
 
 
 def create_app() -> FastAPI:
@@ -92,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(rules.router)
     app.include_router(reports.router)
     app.include_router(admin.router)
+    app.include_router(pause_routes.router)
     app.include_router(internal.router)
     app.include_router(ws.router)
     return app

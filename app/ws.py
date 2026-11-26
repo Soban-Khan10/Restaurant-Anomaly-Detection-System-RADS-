@@ -3,10 +3,14 @@
 Broadcasts to every logged-in dashboard:
   {"type": "incident.new",    "incident": {...row...}}
   {"type": "incident.closed", "incident_id": 1042}
-  {"type": "camera.status",   "camera_id": 1, "status": "online", "fps": 4.9, "ts": "..."}
+  {"type": "camera.status",   "camera_id": 1, "status": "online", "fps": 4.9, "ts": "...",
+                              "detection": "active" | "paused", "pause_reason": "cleaning" | null}
+  {"type": "monitoring.changed", "change": "created" | "ended" | "cancelled" | "started" | "finished", ...}
+                              (sent by app.routes.pauses and the 1-minute job; dashboards reload the status)
 
 Camera status: every worker heartbeat is forwarded as camera.status. If a camera sends no heartbeat for
-CAMERA_OFFLINE_AFTER_S (15 s), the app broadcasts camera.status "offline" for it once. The app writes nothing
+CAMERA_OFFLINE_AFTER_S (15 s), the app broadcasts camera.status "offline" for it once, with the camera's last
+known detection / pause_reason (a paused camera that goes offline is still shown as paused). The app writes nothing
 to camera_health (the worker owns it); this state lives in memory only.
 """
 from __future__ import annotations
@@ -87,9 +91,10 @@ class CameraMonitor:
             return self._offline(camera_id)
         return WsCameraStatus(**entry[0].model_dump())
 
-    @staticmethod
-    def _offline(camera_id: int) -> WsCameraStatus:
-        return WsCameraStatus(camera_id=camera_id, status=CameraStatus.OFFLINE, fps=None, ts=now_iso())
+    def _offline(self, camera_id: int) -> WsCameraStatus:
+        entry = self.last.get(camera_id)
+        known = {"detection": entry[0].detection, "pause_reason": entry[0].pause_reason} if entry else {}
+        return WsCameraStatus(camera_id=camera_id, status=CameraStatus.OFFLINE, fps=None, ts=now_iso(), **known)
 
 
 hub = Hub()

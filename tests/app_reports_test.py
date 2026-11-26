@@ -85,11 +85,11 @@ def test_manager_creates_pdf(ctx, data):
                                    "incidents": 5, "file": rep["file_name"]}
 
 
-def test_admin_creates_xlsx_with_two_sheets(ctx, data):
+def test_admin_creates_xlsx_with_its_sheets(ctx, data):
     r = ctx.client.post("/api/reports", json={**PERIOD, "format": "xlsx"}, headers=ctx.headers("admin"))
     assert r.status_code == 201, r.text
     wb = openpyxl.load_workbook(ctx.db_path.parent / "reports" / r.json()["file_name"])
-    assert wb.sheetnames == ["Summary", "Incidents"]
+    assert wb.sheetnames == ["Summary", "Incidents", "Monitoring paused"]
 
     summary = {row[0]: row[1] for row in wb["Summary"].iter_rows(values_only=True) if row[0] is not None}
     assert summary["Period"] == "01 Dec 2026 to 03 Dec 2026"

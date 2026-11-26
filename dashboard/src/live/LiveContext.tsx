@@ -144,7 +144,7 @@ export function useIncidentEvents(fn: () => void, delayMs = 400): void {
   useEffect(() => {
     let timer = 0;
     const off = subscribe((msg) => {
-      if (msg.type === "camera.status") return;
+      if (msg.type !== "incident.new" && msg.type !== "incident.closed") return;
       window.clearTimeout(timer);
       timer = window.setTimeout(() => fnRef.current(), delayMs);
     });

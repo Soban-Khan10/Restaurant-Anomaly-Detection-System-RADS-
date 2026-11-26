@@ -222,6 +222,15 @@ def _started_within(start_time: str, now: datetime, span: timedelta) -> bool:
     return now - start <= span
 
 
+def _during_pause(Session_: sessionmaker[Session], incident_id: int, also_now: bool) -> bool:
+    """True if the incident started while monitoring was paused on its camera (no texts for those)."""
+    from app.pauses import incident_in_pause  # noqa: PLC0415
+    with Session_() as db:
+        row = db.execute(text("SELECT camera_id, start_time FROM incidents WHERE incident_id = :i"),
+                         {"i": incident_id}).first()
+        return row is not None and incident_in_pause(db, row[0], row[1], also_now=also_now) is not None
+
+
 def catch_up_first_alerts(Session_: sessionmaker[Session], senders: list[Sender] | None = None,
                           now: datetime | None = None) -> list[int]:
     """First alerts for incidents the app never heard about (it was down when the worker sent message 2).
@@ -241,7 +250,8 @@ def catch_up_first_alerts(Session_: sessionmaker[Session], senders: list[Sender]
         caught = [(iid, start) for iid, start in missed if record_dashboard_alert(db, iid)]
     if not caught:
         return []
-    recent = [iid for iid, start in caught if _started_within(start, now, CATCH_UP_TEXT_WITHIN)]
+    recent = [iid for iid, start in caught if _started_within(start, now, CATCH_UP_TEXT_WITHIN)
+              and not _during_pause(Session_, iid, also_now=False)]
     ids = [iid for iid, _ in caught]
     shown = ", ".join(map(str, ids[:20])) + (f" … (+{len(ids) - 20} more)" if len(ids) > 20 else "")
     log.warning("first alert caught up for %d incident(s) reported while the app was down: %s; "
@@ -286,5 +296,8 @@ def run_escalation(Session_: sessionmaker[Session], senders: list[Sender] | None
     for iid in escalated:
         log.warning("incident %s escalated to Admins (still New after %s min)", iid,
                     int(ESCALATE_AFTER.total_seconds() // 60))
+        if _during_pause(Session_, iid, also_now=False):
+            log.warning("incident %s happened during a monitoring pause: escalation shown on the dashboard only", iid)
+            continue
         send_external(Session_, iid, AlertKind.ESCALATION, (RoleName.ADMIN,), senders)
     return escalated

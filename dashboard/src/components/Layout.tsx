@@ -1,11 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABEL, TIME_ZONE } from "../lib/format";
 import { onSoundStateChange, playAlertSound, soundBlocked } from "../lib/sound";
+import { bannerText } from "../lib/pauseForm";
 import { useLive, type Connection } from "../live/LiveContext";
+import { useMonitoring } from "../live/MonitoringContext";
 import { NAV, navFor } from "../nav";
-import { LogoutIcon, MenuIcon, SoundOffIcon, SoundOnIcon } from "./Icons";
+import { LogoutIcon, MenuIcon, PauseIcon, SoundOffIcon, SoundOnIcon } from "./Icons";
 import { ReviewNote } from "./ui";
 
 const connectionStyle: Record<Connection, { dot: string; text: string; label: string }> = {
@@ -59,6 +61,27 @@ function SoundControl({ soundOn, setSoundOn }: { soundOn: boolean; setSoundOn: (
         {warn && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />}
       </button>
     </div>
+  );
+}
+
+/** On every page while any camera is paused: "Monitoring paused on Camera 2 (Cleaning) until 16:00". */
+function PauseBanner() {
+  const { status } = useMonitoring();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => tick((n) => n + 1), 30_000); // keeps "until 16:00" / day text current
+    return () => window.clearInterval(id);
+  }, []);
+  const text = bannerText(status);
+  if (!text) return null;
+  return (
+    <Link to="/pauses" role="status"
+      className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-100 px-4 py-2.5 text-sm font-medium
+        text-amber-900 hover:bg-amber-200/70">
+      <PauseIcon className="h-5 w-5 shrink-0 text-amber-700" />
+      <span className="min-w-0 flex-1">{text}. No incidents are detected there until it ends.</span>
+      <span className="hidden shrink-0 text-xs underline sm:inline">Details</span>
+    </Link>
   );
 }
 
@@ -157,6 +180,7 @@ export default function Layout() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+        <PauseBanner />
         <ReviewNote />
         <Outlet />
       </main>

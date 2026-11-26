@@ -36,9 +36,11 @@ describe("role-based menu (roles table)", () => {
   const labels = (role: "Admin" | "Manager" | "Technical") => navFor(role).map((n) => n.label);
 
   it("gives each role exactly its pages", () => {
-    expect(labels("Admin")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules", "Reports", "Users"]);
-    expect(labels("Manager")).toEqual(["Overview", "Incidents", "Detection rules", "Reports"]); // rules read-only
-    expect(labels("Technical")).toEqual(["Overview", "Incidents", "Cameras & areas", "Detection rules"]);
+    expect(labels("Admin")).toEqual(["Overview", "Incidents", "Monitoring pauses", "Cameras & areas", "Detection rules",
+      "Reports", "Users"]);
+    expect(labels("Manager")).toEqual(["Overview", "Incidents", "Monitoring pauses", "Detection rules", "Reports"]);
+    expect(labels("Technical")).toEqual(["Overview", "Incidents", "Monitoring pauses", "Cameras & areas",
+      "Detection rules"]);
     expect(navFor(undefined)).toEqual([]);
   });
 
